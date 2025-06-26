@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+
+@theme inline {
+  --color-background: #15151F;
+  --color-foreground: var(--foreground);
+  --color-primary: #2C96B5;
+  --color-secondary: #112430;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #15151F;
+    --foreground: #ededed;
+  }
+}
+
+:root {
+  --background: #15151F;
+  --foreground: #ededed;
+  --heading-color: #ffffff;
+  --text-color: #cccccc;
+  --primary-font: 'Mulish', sans-serif;
+}
+
+body {
+  font-family: var(--primary-font);
+  color: var(--text-color);
+  background: var(--background);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--primary-font);
+  color: var(--heading-color);
+  line-height: 1.3;
+}
+
+h1 {
+  font-size: 2.75rem; /* ~44px */
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+h2 {
+  font-size: 2.25rem; /* ~36px */
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+h3 {
+  font-size: 1.875rem; /* ~30px */
+  font-weight: 700;
+}
+
+h4 {
+  font-size: 1.5rem; /* ~24px */
+  font-weight: 600;
+}
+
+h5 {
+  font-size: 1.25rem; /* ~20px */
+  font-weight: 600;
+}
+
+h6 {
+  font-size: 1rem; /* ~16px */
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+p {
+  line-height: 1.5;
+}
