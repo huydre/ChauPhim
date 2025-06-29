@@ -10,9 +10,9 @@ export default function PhimHay() {
     <div className="bg-background text-gray-100 font-sans min-h-screen">
       <Header />
       <HeroSection />
-      <FilterSection />
-      <MoviesGrid />
       <CategoriesSection />
+      {/* <FilterSection /> */}
+      <MoviesGrid />
       <Footer />
     </div>
   );

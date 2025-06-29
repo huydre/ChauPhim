@@ -1,6 +1,6 @@
 'use client';
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { Pagination, Autoplay, Thumbs, EffectFade } from 'swiper/modules';
+import { Pagination, Autoplay, EffectFade } from 'swiper/modules';
 import { useState, useRef } from 'react';
 import Image from 'next/image';
 import { featuredMovies } from '../../data/movies';
@@ -8,11 +8,9 @@ import { featuredMovies } from '../../data/movies';
 // Import Swiper styles
 import 'swiper/css';
 import 'swiper/css/pagination';
-import 'swiper/css/thumbs';
 import 'swiper/css/effect-fade';
 
 export default function HeroSection() {
-  const [thumbsSwiper, setThumbsSwiper] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const mainSwiperRef = useRef(null);
@@ -32,11 +30,11 @@ export default function HeroSection() {
   };
 
   return (
-    <section className="relative">
+    <section className="relative h-screen overflow-hidden bg-black">
       {/* Main Swiper */}
       <Swiper
         ref={mainSwiperRef}
-        modules={[Pagination, Autoplay, Thumbs, EffectFade]}
+        modules={[Pagination, Autoplay, EffectFade]}
         spaceBetween={0}
         slidesPerView={1}
         speed={800}
@@ -47,42 +45,51 @@ export default function HeroSection() {
         autoplay={{
           delay: 5000,
           disableOnInteraction: false,
+          pauseOnMouseEnter: true,
         }}
         pagination={{ 
           clickable: true,
-          bulletClass: 'swiper-pagination-bullet !bg-white/50',
-          bulletActiveClass: 'swiper-pagination-bullet-active !bg-white',
+          bulletClass: 'swiper-pagination-bullet',
+          bulletActiveClass: 'swiper-pagination-bullet-active',
         }}
-        thumbs={thumbsSwiper ? { swiper: thumbsSwiper && !thumbsSwiper.destroyed ? thumbsSwiper : null } : null}
         onSlideChange={(swiper) => setActiveIndex(swiper.activeIndex)}
         onSlideChangeTransitionStart={handleSlideChangeStart}
         onSlideChangeTransitionEnd={handleSlideChangeEnd}
-        className="h-screen"
+        className="h-full w-full"
+        watchOverflow={true}
+        touchRatio={0.8}
+        style={{
+          overflow: 'hidden',
+          contain: 'layout style paint'
+        }}
       >
         {featuredMovies.map((movie, index) => (
           <SwiperSlide key={index}>
-            <div className="relative h-full">
+            <div className="relative h-full w-full">
               {/* Background Image */}
-              <div className="absolute inset-0">
+              <div className="absolute inset-0 z-0">
                 <Image
                   src={movie.poster}
                   alt={movie.title}
                   fill
                   className="object-cover"
                   priority={index === 0}
+                  quality={90}
                 />
-                <div className="absolute inset-0 bg-black/40"></div>
+                {/* Dark overlay for text readability */}
+                <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent"></div>
               </div>
 
-              {/* Content */}
+              {/* Content Overlay */}
               <div className="relative z-10 h-full flex items-center">
-                <div className="container mx-auto px-4">
-                  <div className="max-w-2xl">
-                    {/* Movie Info */}
-                    <div className={`text-white space-y-6 transition-all duration-800 ${
+                <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+                  <div className="max-w-2xl lg:max-w-3xl">
+                    {/* Movie Info Container */}
+                    <div className={`text-white space-y-4 sm:space-y-6 transition-all duration-700 ${
                       isTransitioning ? 'opacity-0 transform translate-x-[-30px]' : 'opacity-100 transform translate-x-0'
                     }`}>
-                      {/* Movie Logo or Title */}
+                      
+                      {/* Movie Title */}
                       <div className="movie-title-container">
                         {movie.logo ? (
                           <Image
@@ -90,10 +97,10 @@ export default function HeroSection() {
                             alt={movie.title}
                             width={400}
                             height={150}
-                            className="h-20 md:h-32 w-auto object-contain"
+                            className="h-16 sm:h-20 md:h-32 w-auto object-contain"
                           />
                         ) : (
-                          <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
+                          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight">
                             {movie.title}
                           </h1>
                         )}
@@ -173,7 +180,9 @@ export default function HeroSection() {
                   src={thumbMovie.thumbnail}
                   alt={thumbMovie.title}
                   fill
+                  sizes="80px"
                   className="object-cover"
+                  loading="lazy"
                 />
                 {thumbIndex === activeIndex && (
                   <div className="thumbnail-overlay">
@@ -190,32 +199,58 @@ export default function HeroSection() {
         </div>
       </div>
 
-      {/* Hidden Thumbs Swiper for syncing */}
-      <Swiper
-        onSwiper={setThumbsSwiper}
-        modules={[Thumbs]}
-        spaceBetween={0}
-        slidesPerView={featuredMovies.length}
-        watchSlidesProgress={true}
-        className="hidden"
-      >
-        {featuredMovies.map((movie, index) => (
-          <SwiperSlide key={`thumb-${index}`}>
-            <div></div>
-          </SwiperSlide>
-        ))}
-      </Swiper>
-
       <style jsx>{`
+        /* Hero Section Specific Styles */
+        .hero-swiper {
+          contain: layout style paint;
+          position: relative;
+          z-index: 1;
+          overflow: hidden !important;
+        }
+        
+        .hero-swiper .swiper-slide {
+          will-change: opacity;
+          backface-visibility: hidden;
+          position: relative;
+          z-index: 1;
+          overflow: hidden;
+        }
+        
+        .hero-swiper .swiper-wrapper {
+          overflow: hidden;
+        }
+
+        /* Custom Pagination Styles */
+        .hero-swiper :global(.swiper-pagination) {
+          bottom: 2rem !important;
+          z-index: 20;
+        }
+
+        .hero-swiper :global(.swiper-pagination-bullet) {
+          width: 12px !important;
+          height: 12px !important;
+          background: rgba(255, 255, 255, 0.3) !important;
+          border-radius: 50% !important;
+          margin: 0 6px !important;
+          transition: all 0.3s ease !important;
+        }
+
+        .hero-swiper :global(.swiper-pagination-bullet-active) {
+          background: white !important;
+          transform: scale(1.2) !important;
+        }
+
         /* Movie title animation */
         .movie-title-container {
-          animation: slideInFromLeft 0.8s ease-out;
+          animation: slideInFromLeft 0.6s ease-out;
+          position: relative;
+          z-index: 10;
         }
 
         @keyframes slideInFromLeft {
           from {
             opacity: 0;
-            transform: translateX(-50px);
+            transform: translateX(-30px);
           }
           to {
             opacity: 1;
@@ -226,38 +261,43 @@ export default function HeroSection() {
         /* Thumbnails responsive container */
         .thumbnails-container {
           position: absolute;
-          bottom: 0;
-          right: 0;
-          z-index: 20;
+          bottom: 2rem;
+          right: 2rem;
+          z-index: 30;
           overflow: hidden;
-          
-          /* Mobile: Bottom center */
-          transform: translateY(-2rem);
-          left: 50%;
-          right: auto;
-          transform: translateX(-50%) translateY(-2rem);
         }
         
-        /* Tablet and up: Bottom right */
-        @media (min-width: 768px) {
+        /* Mobile: Bottom center */
+        @media (max-width: 767px) {
           .thumbnails-container {
-            left: auto;
-            right: 0;
-            transform: translateY(-4rem) translateX(-1.5rem);
+            left: 50%;
+            right: auto;
+            transform: translateX(-50%);
+            bottom: 1rem;
+          }
+        }
+        
+        /* Tablet: Bottom right with some offset */
+        @media (min-width: 768px) and (max-width: 1023px) {
+          .thumbnails-container {
+            right: 1.5rem;
+            bottom: 2rem;
           }
         }
         
         /* Desktop: More offset */
         @media (min-width: 1024px) {
           .thumbnails-container {
-            transform: translateY(-16rem) translateX(-6rem);
+            right: 6rem;
+            bottom: 8rem;
           }
         }
         
         /* Large desktop: Max offset */
         @media (min-width: 1280px) {
           .thumbnails-container {
-            transform: translateY(-16rem) translateX(-8rem);
+            right: 8rem;
+            bottom: 8rem;
           }
         }
 
@@ -298,8 +338,6 @@ export default function HeroSection() {
 
         .thumbnail-image {
           position: relative;
-          width: 67px;
-          height: 41px;
           border-radius: 0.5rem;
           overflow: hidden;
           

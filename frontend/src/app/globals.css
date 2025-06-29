@@ -1,21 +1,5 @@
 @import "tailwindcss";
 
-
-@theme inline {
-  --color-background: #15151F;
-  --color-foreground: var(--foreground);
-  --color-primary: #2C96B5;
-  --color-secondary: #112430;
-  --primary: 44 150 181; /* RGB values for primary color */
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #15151F;
-    --foreground: #ededed;
-  }
-}
-
 :root {
   --background: #15151F;
   --foreground: #ededed;
@@ -23,6 +7,17 @@
   --text-color: #cccccc;
   --primary-font: 'Mulish', sans-serif;
   --primary: 44 150 181; /* RGB values for primary color */
+  --color-background: #15151F;
+  --color-foreground: var(--foreground);
+  --color-primary: #2C96B5;
+  --color-secondary: #112430;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #15151F;
+    --foreground: #ededed;
+  }
 }
 
 body {
@@ -40,4 +35,87 @@ h1, h2, h3, h4, h5, h6 {
 
 p {
   line-height: 1.5;
+}
+
+/* Swiper Customizations - Basic only */
+.swiper {
+  isolation: isolate;
+  transform: translateZ(0);
+}
+
+.swiper-slide {
+  height: auto;
+  will-change: transform;
+}
+
+/* Performance optimizations */
+.movie-card-container {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.movie-card-container:hover {
+  will-change: transform, z-index;
+}
+
+/* Movie Card Line Clamp - Keep these utilities */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* Essential Utilities Only */
+.gradient-text {
+  background-size: 200% 200%;
+  animation: gradient 3s ease infinite;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Custom Scrollbar for Horizontal Scroll */
+.horizontal-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.horizontal-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.horizontal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.horizontal-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
