@@ -1,28 +1,73 @@
 const multer = require('multer');
-const path = require('path');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('../config/cloudinary');
 
-// Configure multer for file uploads
-const storage = multer.memoryStorage();
+// Cloudinary storage
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'chauphim',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+    transformation: [
+      { width: 500, height: 500, crop: 'limit' },
+      { quality: 'auto' }
+    ]
+  }
+});
 
+// File filter
 const fileFilter = (req, file, cb) => {
   // Check file type
-  const allowedTypes = /jpeg|jpg|png|gif|webp|mp4|mov|avi|mkv/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
-
-  if (mimetype && extname) {
-    return cb(null, true);
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
   } else {
-    cb(new Error('Only images and videos are allowed!'), false);
+    cb(new Error('Not an image! Please upload only images.'), false);
   }
 };
 
+// Multer configuration
 const upload = multer({
   storage: storage,
+  fileFilter: fileFilter,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
-  },
-  fileFilter: fileFilter
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 // 5MB default
+  }
 });
 
-module.exports = upload;
+// Error handling middleware for multer
+const handleMulterError = (error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'File too large'
+      });
+    }
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Too many files'
+      });
+    }
+    if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Unexpected field'
+      });
+    }
+  }
+  
+  if (error.message === 'Not an image! Please upload only images.') {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Only image files are allowed'
+    });
+  }
+
+  next(error);
+};
+
+module.exports = {
+  upload,
+  handleMulterError
+};

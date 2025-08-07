@@ -3,11 +3,13 @@ const { body } = require('express-validator');
 const {
   register,
   login,
-  getMe,
+  getProfile,
   updateProfile,
   changePassword,
+  uploadAvatar,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  logout
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
@@ -47,7 +49,7 @@ router.post('/reset-password', resetPassword);
 // Protected routes
 router.use(protect); // All routes below this are protected
 
-router.get('/me', getMe);
+router.get('/me', getProfile);
 router.put('/update-profile', updateProfile);
 router.put('/change-password', changePassword);
 

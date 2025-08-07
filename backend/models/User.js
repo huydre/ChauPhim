@@ -1,95 +1,152 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
 const bcrypt = require('bcryptjs');
 
-const userSchema = new mongoose.Schema({
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
   username: {
-    type: String,
-    required: [true, 'Username is required'],
+    type: DataTypes.STRING(50),
+    allowNull: false,
     unique: true,
-    trim: true,
-    minlength: [3, 'Username must be at least 3 characters'],
-    maxlength: [20, 'Username cannot exceed 20 characters']
+    validate: {
+      len: [3, 50],
+      isAlphanumeric: true
+    }
   },
   email: {
-    type: String,
-    required: [true, 'Email is required'],
+    type: DataTypes.STRING(100),
+    allowNull: false,
     unique: true,
-    lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+    validate: {
+      isEmail: true
+    }
   },
   password: {
-    type: String,
-    required: [true, 'Password is required'],
-    minlength: [6, 'Password must be at least 6 characters'],
-    select: false
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    validate: {
+      len: [6, 255]
+    }
   },
   fullName: {
-    type: String,
-    required: [true, 'Full name is required'],
-    trim: true
+    type: DataTypes.STRING(100),
+    allowNull: true
   },
   avatar: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  bio: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  dateOfBirth: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  phone: {
+    type: DataTypes.STRING(20),
+    allowNull: true
   },
   role: {
-    type: String,
-    enum: ['user', 'admin', 'moderator'],
-    default: 'user'
+    type: DataTypes.ENUM('user', 'moderator', 'admin'),
+    defaultValue: 'user'
   },
   isActive: {
-    type: Boolean,
-    default: true
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   },
-  preferences: {
-    favoriteGenres: [String],
-    language: {
-      type: String,
-      default: 'vi'
-    },
-    adultContent: {
-      type: Boolean,
-      default: false
-    }
+  isEmailVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   },
-  subscription: {
-    plan: {
-      type: String,
-      enum: ['free', 'premium', 'vip'],
-      default: 'free'
-    },
-    expiresAt: Date,
-    isActive: {
-      type: Boolean,
-      default: false
-    }
+  emailVerificationToken: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  passwordResetToken: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  passwordResetExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  lastLogin: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  loginAttempts: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0
+  },
+  lockUntil: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
-  timestamps: true
+  tableName: 'users',
+  hooks: {
+    beforeCreate: async (user) => {
+      if (user.password) {
+        const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12);
+        user.password = await bcrypt.hash(user.password, salt);
+      }
+    },
+    beforeUpdate: async (user) => {
+      if (user.changed('password')) {
+        const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12);
+        user.password = await bcrypt.hash(user.password, salt);
+      }
+    }
+  }
 });
 
-// Index for performance
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
-
-// Hash password before saving
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
-});
-
-// Compare password method
-userSchema.methods.comparePassword = async function(candidatePassword) {
+// Instance methods
+User.prototype.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-// Remove sensitive data from JSON output
-userSchema.methods.toJSON = function() {
-  const user = this.toObject();
-  delete user.password;
-  return user;
+User.prototype.createPasswordResetToken = function() {
+  const resetToken = require('crypto').randomBytes(32).toString('hex');
+  this.passwordResetToken = require('crypto')
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+  this.passwordResetExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  return resetToken;
 };
 
-module.exports = mongoose.model('User', userSchema);
+User.prototype.isLocked = function() {
+  return !!(this.lockUntil && this.lockUntil > Date.now());
+};
+
+User.prototype.incLoginAttempts = async function() {
+  if (this.lockUntil && this.lockUntil < Date.now()) {
+    return this.update({
+      loginAttempts: 1,
+      lockUntil: null
+    });
+  }
+  
+  const updates = { loginAttempts: this.loginAttempts + 1 };
+  
+  if (this.loginAttempts + 1 >= 5 && !this.isLocked()) {
+    updates.lockUntil = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
+  }
+  
+  return this.update(updates);
+};
+
+User.prototype.resetLoginAttempts = async function() {
+  return this.update({
+    loginAttempts: 0,
+    lockUntil: null
+  });
+};
+
+module.exports = User;

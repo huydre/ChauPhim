@@ -1,22 +1,37 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
 
-const favoriteSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'User is required']
+const Favorite = sequelize.define('Favorite', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
   },
-  movie: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Movie',
-    required: [true, 'Movie is required']
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id'
+    }
+  },
+  movieId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'movies',
+      key: 'id'
+    }
   }
 }, {
-  timestamps: true
+  tableName: 'favorites',
+  indexes: [
+    {
+      unique: true,
+      fields: ['userId', 'movieId'],
+      name: 'unique_user_movie_favorite'
+    }
+  ]
 });
 
-// Compound index to prevent duplicate favorites
-favoriteSchema.index({ user: 1, movie: 1 }, { unique: true });
-favoriteSchema.index({ user: 1, createdAt: -1 });
-
-module.exports = mongoose.model('Favorite', favoriteSchema);
+module.exports = Favorite;

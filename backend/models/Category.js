@@ -1,68 +1,73 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
 
-const categorySchema = new mongoose.Schema({
+const Category = sequelize.define('Category', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   name: {
-    type: String,
-    required: [true, 'Category name is required'],
+    type: DataTypes.STRING,
+    allowNull: false,
     unique: true,
-    trim: true
+    validate: {
+      notEmpty: true,
+      len: [1, 100]
+    }
   },
   slug: {
-    type: String,
+    type: DataTypes.STRING,
+    allowNull: false,
     unique: true,
-    lowercase: true
+    validate: {
+      notEmpty: true,
+      isSlug: function(value) {
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) {
+          throw new Error('Slug must be in valid format (lowercase, numbers, hyphens only)');
+        }
+      }
+    }
   },
   description: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT,
+    allowNull: true
   },
-  image: {
-    type: String,
-    default: ''
+  status: {
+    type: DataTypes.ENUM('active', 'inactive'),
+    allowNull: false,
+    defaultValue: 'active'
   },
-  color: {
-    type: String,
-    default: '#6B7280' // Default gray color
+  createdBy: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  order: {
-    type: Number,
-    default: 0
-  },
-  movieCount: {
-    type: Number,
-    default: 0
+  updatedBy: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  tableName: 'categories',
+  indexes: [
+    {
+      fields: ['name']
+    },
+    {
+      fields: ['slug']
+    },
+    {
+      fields: ['status']
+    }
+  ]
 });
 
-// Index for performance
-categorySchema.index({ slug: 1 });
-categorySchema.index({ isActive: 1 });
-categorySchema.index({ order: 1 });
-
-// Generate slug before saving
-categorySchema.pre('save', function(next) {
-  if (this.isModified('name') || !this.slug) {
-    this.slug = this.name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .trim('-');
-  }
-  next();
-});
-
-// Update movie count
-categorySchema.methods.updateMovieCount = async function() {
-  const Movie = require('./Movie');
-  this.movieCount = await Movie.countDocuments({ genres: this._id });
-  await this.save();
-};
-
-module.exports = mongoose.model('Category', categorySchema);
+module.exports = Category;

@@ -1,12 +1,12 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { User } = require('../models');
 
-// Protect routes - require authentication
+// Protect routes
 exports.protect = async (req, res, next) => {
   try {
     let token;
 
-    // Get token from header
+    // Check for token in headers
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
@@ -15,7 +15,7 @@ exports.protect = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({
         status: 'error',
-        message: 'Access denied. No token provided.'
+        message: 'Not authorized to access this route'
       });
     }
 
@@ -23,58 +23,45 @@ exports.protect = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Get user from token
-    const user = await User.findById(decoded.id).select('+password');
-    if (!user || !user.isActive) {
+    const user = await User.findByPk(decoded.id, {
+      attributes: { exclude: ['password'] }
+    });
+
+    if (!user) {
       return res.status(401).json({
         status: 'error',
-        message: 'Invalid token or user not found.'
+        message: 'Not authorized to access this route'
       });
     }
 
-    // Grant access to protected route
+    // Check if user is active
+    if (!user.isActive) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'User account is deactivated'
+      });
+    }
+
     req.user = user;
     next();
   } catch (error) {
+    console.error(error);
     return res.status(401).json({
       status: 'error',
-      message: 'Invalid token.'
+      message: 'Not authorized to access this route'
     });
   }
 };
 
-// Restrict to certain roles
-exports.restrictTo = (...roles) => {
+// Authorize specific roles
+exports.authorize = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         status: 'error',
-        message: 'Access denied. Insufficient permissions.'
+        message: `User role '${req.user.role}' is not authorized to access this route`
       });
     }
     next();
   };
-};
-
-// Optional authentication - don't fail if no token
-exports.optionalAuth = async (req, res, next) => {
-  try {
-    let token;
-
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
-
-    if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id);
-      if (user && user.isActive) {
-        req.user = user;
-      }
-    }
-    
-    next();
-  } catch (error) {
-    // Continue without authentication
-    next();
-  }
 };
