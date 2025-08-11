@@ -1,0 +1,319 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  GUEST
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  BANNED
+  PENDING
+}
+
+enum VideoType {
+  MOVIE
+  SERIES
+}
+
+enum AgeRating {
+  G
+  PG
+  PG13
+  R
+  NC17
+}
+
+enum SubscriptionPlan {
+  FREE
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model User {
+  id            String     @id @default(uuid())
+  email         String     @unique
+  passwordHash  String     @map("password_hash")
+  name          String
+  avatarUrl     String?    @map("avatar_url")
+  role          UserRole   @default(USER)
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  lastLoginAt   DateTime?  @map("last_login_at")
+
+  // Relations
+  favorites     Favorite[]
+  ratings       Rating[]
+  comments      Comment[]
+  watchHistory  WatchHistory[]
+  subscriptions Subscription[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Genre {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  nameVi    String   @map("name_vi")
+  nameEn    String   @map("name_en")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  videoGenres VideoGenre[]
+
+  @@map("genres")
+}
+
+model Video {
+  id             String    @id @default(uuid())
+  slug           String    @unique
+  titleVi        String    @map("title_vi")
+  titleEn        String    @map("title_en")
+  descriptionVi  String?   @map("description_vi") @db.Text
+  descriptionEn  String?   @map("description_en") @db.Text
+  type           VideoType
+  year           Int
+  posterUrl      String?   @map("poster_url")
+  backdropUrl    String?   @map("backdrop_url")
+  ageRating      AgeRating @map("age_rating")
+  durationMinutes Int?     @map("duration_minutes") // Nullable for SERIES
+  isPublished    Boolean   @default(false) @map("is_published")
+  viewsCount     BigInt    @default(0) @map("views_count")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  genres       VideoGenre[]
+  casts        VideoCast[]
+  favorites    Favorite[]
+  ratings      Rating[]
+  comments     Comment[]
+  watchHistory WatchHistory[]
+  seasons      Season[]
+  movieSources MovieSource[]
+
+  @@map("videos")
+}
+
+model Season {
+  id           String   @id @default(uuid())
+  videoId      String   @map("video_id")
+  seasonNumber Int      @map("season_number")
+  nameVi       String   @map("name_vi")
+  nameEn       String   @map("name_en")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  video    Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  episodes Episode[]
+
+  @@unique([videoId, seasonNumber])
+  @@map("seasons")
+}
+
+model Episode {
+  id                     String   @id @default(uuid())
+  seasonId               String   @map("season_id")
+  episodeNumber          Int      @map("episode_number")
+  titleVi                String   @map("title_vi")
+  titleEn                String   @map("title_en")
+  synopsisVi             String?  @map("synopsis_vi") @db.Text
+  synopsisEn             String?  @map("synopsis_en") @db.Text
+  runtimeMinutes         Int      @map("runtime_minutes")
+  hlsManifestKey         String?  @map("hls_manifest_key")
+  trailerHlsManifestKey  String?  @map("trailer_hls_manifest_key")
+  subtitlesJson          Json?    @map("subtitles_json") // Array of {lang, label, key}
+  isPublished            Boolean  @default(false) @map("is_published")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  season       Season         @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  watchHistory WatchHistory[]
+
+  @@unique([seasonId, episodeNumber])
+  @@map("episodes")
+}
+
+model MovieSource {
+  id                    String   @id @default(uuid())
+  videoId               String   @map("video_id")
+  hlsManifestKey        String?  @map("hls_manifest_key")
+  trailerHlsManifestKey String?  @map("trailer_hls_manifest_key")
+  subtitlesJson         Json?    @map("subtitles_json") // Array of {lang, label, key}
+  isPublished           Boolean  @default(false) @map("is_published")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId])
+  @@map("movie_sources")
+}
+
+model VideoGenre {
+  videoId String @map("video_id")
+  genreId String @map("genre_id")
+
+  // Relations
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  genre Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([videoId, genreId])
+  @@map("video_genres")
+}
+
+model CastMember {
+  id        String   @id @default(uuid())
+  name      String
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  videoCasts VideoCast[]
+
+  @@map("cast_members")
+}
+
+model VideoCast {
+  videoId  String @map("video_id")
+  castId   String @map("cast_id")
+  roleName String @map("role_name")
+
+  // Relations
+  video Video      @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  cast  CastMember @relation(fields: [castId], references: [id], onDelete: Cascade)
+
+  @@id([videoId, castId])
+  @@map("video_casts")
+}
+
+model Favorite {
+  userId    String   @map("user_id")
+  videoId   String   @map("video_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@id([userId, videoId])
+  @@map("favorites")
+}
+
+model Rating {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  videoId    String   @map("video_id")
+  score      Int      // 1-10
+  reviewText String?  @map("review_text") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+  @@map("ratings")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  videoId   String   @map("video_id")
+  parentId  String?  @map("parent_id")
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  isDeleted Boolean  @default(false) @map("is_deleted")
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video    Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+}
+
+model WatchHistory {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  videoId         String   @map("video_id")
+  episodeId       String?  @map("episode_id")
+  progressSeconds Int      @map("progress_seconds")
+  completed       Boolean  @default(false)
+  lastWatchedAt   DateTime @map("last_watched_at")
+
+  // Relations
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video   Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  episode Episode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@map("watch_history")
+}
+
+model Subscription {
+  id      String             @id @default(uuid())
+  userId  String             @map("user_id")
+  plan    SubscriptionPlan
+  startAt DateTime           @map("start_at")
+  endAt   DateTime           @map("end_at")
+  status  SubscriptionStatus
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  action    String
+  resource  String
+  ip        String?
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
