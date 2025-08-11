@@ -1,256 +1,411 @@
-# ChauPhim Backend API
+# ChauPhim VOD Backend API
 
-A comprehensive Node.js backend API for ChauPhim movie platform built with Express.js and MongoDB.
+A comprehensive Video-on-Demand (VOD) backend API built with Node.js, TypeScript, Express, Prisma, and MySQL. This project follows Clean Architecture principles and implements industry best practices for scalable video streaming platforms.
 
-## Features
+## 🚀 Features
 
-- 🎬 **Movie Management**: Complete CRUD operations for movies with advanced filtering and search
-- 👥 **User Authentication**: JWT-based authentication with role-based access control
-- ⭐ **Reviews & Ratings**: User review system with rating calculations
-- ❤️ **Favorites**: Personal movie favorites management
-- 🏷️ **Categories**: Dynamic movie categorization system
-- 📱 **RESTful API**: Clean and well-documented REST endpoints
-- 🔒 **Security**: Input validation, rate limiting, and CORS protection
-- ☁️ **File Upload**: Cloudinary integration for image uploads
-- 📊 **Admin Dashboard**: Comprehensive admin panel with statistics
+- **Authentication & Authorization**: JWT-based auth with refresh tokens, role-based access control
+- **Video Management**: Movies and series with seasons/episodes support
+- **Streaming**: HLS video streaming with presigned URLs, subtitle support
+- **User Features**: Favorites, watch history, ratings, comments
+- **Content Management**: Admin panel for content management
+- **Media Processing**: Video transcoding with FFmpeg and job queues
+- **Caching**: Redis-based caching for performance optimization
+- **Storage**: S3-compatible object storage (MinIO)
+- **Search & Filtering**: Advanced content discovery
+- **Internationalization**: Vietnamese and English content support
+- **API Documentation**: OpenAPI/Swagger documentation
+- **Testing**: Comprehensive test suite
+- **Monitoring**: Structured logging with correlation IDs
 
-## Tech Stack
+## 🏗️ Architecture
 
-- **Runtime**: Node.js
+```
+├── src/
+│   ├── app.ts                 # Express app configuration
+│   ├── server.ts              # Server startup and graceful shutdown
+│   ├── config/                # Configuration and environment setup
+│   │   ├── index.ts           # Main configuration
+│   │   ├── logger.ts          # Logging configuration
+│   │   └── swagger.ts         # API documentation setup
+│   ├── modules/               # Feature modules (Clean Architecture)
+│   │   ├── auth/              # Authentication & authorization
+│   │   ├── users/             # User management
+│   │   ├── videos/            # Video content management
+│   │   ├── genres/            # Genre management
+│   │   ├── stream/            # Video streaming
+│   │   ├── watch/             # Watch progress tracking
+│   │   ├── ratings/           # Rating system
+│   │   ├── comments/          # Comment system
+│   │   └── admin/             # Admin panel
+│   ├── infra/                 # Infrastructure layer
+│   │   ├── db/                # Database (Prisma)
+│   │   ├── cache/             # Redis caching
+│   │   ├── storage/           # S3/MinIO storage
+│   │   └── queue/             # Background jobs (BullMQ)
+│   ├── middlewares/           # Express middlewares
+│   │   ├── auth.ts            # Authentication middleware
+│   │   ├── validation.ts      # Request validation
+│   │   ├── errorHandler.ts    # Error handling
+│   │   └── notFound.ts        # 404 handler
+│   ├── utils/                 # Utility functions
+│   └── tests/                 # Test suites
+└── prisma/                    # Database schema and migrations
+```
+
+## 🛠️ Tech Stack
+
+- **Runtime**: Node.js 18+ LTS
+- **Language**: TypeScript
 - **Framework**: Express.js
-- **Database**: MongoDB with Mongoose ODM
-- **Authentication**: JWT (JSON Web Tokens)
-- **File Upload**: Cloudinary
-- **Security**: bcryptjs, helmet, express-rate-limit
-- **Validation**: express-validator
-- **Environment**: dotenv
+- **Database**: MySQL 8.0
+- **ORM**: Prisma
+- **Cache**: Redis
+- **Storage**: MinIO (S3-compatible)
+- **Queue**: BullMQ
+- **Authentication**: JWT
+- **Validation**: Zod
+- **Testing**: Jest + Supertest
+- **Documentation**: Swagger/OpenAPI 3.0
+- **Logging**: Pino
+- **Linting**: ESLint + Prettier
 
-## API Endpoints
+## 📋 Prerequisites
+
+- Node.js 18+ LTS
+- Docker & Docker Compose
+- MySQL 8.0
+- Redis
+- MinIO or AWS S3
+
+## 🚀 Quick Start
+
+### 1. Clone the repository
+
+```bash
+git clone <repository-url>
+cd ChauPhim/backend
+```
+
+### 2. Install dependencies
+
+```bash
+npm install
+# or
+pnpm install
+```
+
+### 3. Environment configuration
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` file with your configuration:
+
+```env
+NODE_ENV=development
+PORT=3000
+
+# Database
+DATABASE_URL="mysql://root:secret@localhost:3306/vod_app"
+
+# JWT
+JWT_SECRET=your_super_secret_jwt_key_change_in_production
+JWT_REFRESH_SECRET=your_super_secret_refresh_key_change_in_production
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# Storage (MinIO)
+STORAGE_ENDPOINT=http://localhost:9000
+STORAGE_BUCKET=vod
+STORAGE_ACCESS_KEY=minioadmin
+STORAGE_SECRET_KEY=minioadmin
+STORAGE_USE_SSL=false
+
+# Additional configuration...
+```
+
+### 4. Start infrastructure services
+
+```bash
+docker-compose up -d mysql redis minio
+```
+
+### 5. Database setup
+
+```bash
+# Generate Prisma client
+npm run db:generate
+
+# Run migrations
+npm run db:migrate
+
+# Seed database with sample data
+npm run db:seed
+```
+
+### 6. Start the development server
+
+```bash
+npm run dev
+```
+
+The API will be available at:
+- **API**: http://localhost:3000
+- **Documentation**: http://localhost:3000/docs
+- **Health Check**: http://localhost:3000/health
+
+### 7. Access MinIO Console (Optional)
+
+MinIO console: http://localhost:9001
+- Username: `minioadmin`
+- Password: `minioadmin`
+
+## 📚 API Documentation
 
 ### Authentication
-- `POST /api/auth/register` - User registration
-- `POST /api/auth/login` - User login
-- `GET /api/auth/profile` - Get user profile
-- `PUT /api/auth/profile` - Update user profile
-- `PUT /api/auth/change-password` - Change password
-- `POST /api/auth/forgot-password` - Password reset request
-- `PUT /api/auth/reset-password/:token` - Reset password
 
-### Movies
-- `GET /api/movies` - Get all movies with pagination and filters
-- `GET /api/movies/:id` - Get single movie by ID
-- `GET /api/movies/slug/:slug` - Get movie by slug
-- `POST /api/movies` - Create new movie (Admin/Moderator)
-- `PUT /api/movies/:id` - Update movie (Admin/Moderator)
-- `DELETE /api/movies/:id` - Delete movie (Admin/Moderator)
-- `GET /api/movies/featured` - Get featured movies
-- `GET /api/movies/recommended` - Get recommended movies
-- `GET /api/movies/search` - Search movies
-- `GET /api/movies/category/:categorySlug` - Get movies by category
-- `GET /api/movies/country/:country` - Get movies by country
-- `PUT /api/movies/:id/views` - Increment movie views
+#### Register
+```bash
+POST /auth/register
+Content-Type: application/json
 
-### Categories
-- `GET /api/categories` - Get all categories
-- `GET /api/categories/:id` - Get single category
-- `GET /api/categories/slug/:slug` - Get category by slug
-- `POST /api/categories` - Create category (Admin)
-- `PUT /api/categories/:id` - Update category (Admin)
-- `DELETE /api/categories/:id` - Delete category (Admin)
-- `PUT /api/categories/reorder` - Reorder categories (Admin)
-
-### Reviews
-- `GET /api/reviews` - Get all reviews
-- `GET /api/reviews/:id` - Get single review
-- `POST /api/reviews` - Create review (Auth required)
-- `PUT /api/reviews/:id` - Update review (Owner/Admin)
-- `DELETE /api/reviews/:id` - Delete review (Owner/Admin)
-- `GET /api/reviews/movie/:movieId` - Get reviews for specific movie
-- `GET /api/reviews/user/:userId` - Get user's reviews
-
-### Favorites
-- `GET /api/favorites` - Get user's favorites (Auth required)
-- `POST /api/favorites` - Add to favorites (Auth required)
-- `DELETE /api/favorites/:movieId` - Remove from favorites (Auth required)
-- `POST /api/favorites/toggle/:movieId` - Toggle favorite status (Auth required)
-- `GET /api/favorites/check/:movieId` - Check if movie is favorited (Auth required)
-
-### Admin
-- `GET /api/admin/stats` - Dashboard statistics (Admin)
-- `GET /api/admin/users` - Get all users (Admin)
-- `PUT /api/admin/users/:id/role` - Update user role (Admin)
-- `PUT /api/admin/users/:id/toggle-active` - Toggle user status (Admin)
-- `DELETE /api/admin/users/:id` - Delete user (Admin)
-
-## Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd chauphim/backend
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit `.env` file with your configuration:
-   ```env
-   NODE_ENV=development
-   PORT=5000
-   MONGODB_URI=mongodb://localhost:27017/chauphim
-   JWT_SECRET=your-super-secret-jwt-key
-   CLOUDINARY_CLOUD_NAME=your_cloud_name
-   CLOUDINARY_API_KEY=your_api_key
-   CLOUDINARY_API_SECRET=your_api_secret
-   ```
-
-4. **Start MongoDB**
-   Make sure MongoDB is running on your system.
-
-5. **Run the application**
-   ```bash
-   # Development mode
-   npm run dev
-   
-   # Production mode
-   npm start
-   ```
-
-## Project Structure
-
-```
-backend/
-├── config/
-│   ├── database.js         # MongoDB connection
-│   └── cloudinary.js       # Cloudinary configuration
-├── controllers/
-│   ├── authController.js   # Authentication logic
-│   ├── movieController.js  # Movie operations
-│   ├── categoryController.js # Category operations
-│   ├── reviewController.js # Review operations
-│   ├── favoriteController.js # Favorite operations
-│   └── adminController.js  # Admin operations
-├── middleware/
-│   ├── auth.js            # Authentication middleware
-│   ├── upload.js          # File upload middleware
-│   └── validation.js      # Input validation
-├── models/
-│   ├── User.js            # User model
-│   ├── Movie.js           # Movie model
-│   ├── Category.js        # Category model
-│   ├── Review.js          # Review model
-│   └── Favorite.js        # Favorite model
-├── routes/
-│   ├── authRoutes.js      # Authentication routes
-│   ├── movieRoutes.js     # Movie routes
-│   ├── categoryRoutes.js  # Category routes
-│   ├── reviewRoutes.js    # Review routes
-│   ├── favoriteRoutes.js  # Favorite routes
-│   └── adminRoutes.js     # Admin routes
-├── utils/
-│   └── helpers.js         # Utility functions
-├── .env                   # Environment variables
-├── .env.example          # Environment template
-├── server.js             # Application entry point
-└── package.json          # Dependencies and scripts
+{
+  "email": "user@example.com",
+  "password": "password123",
+  "name": "User Name"
+}
 ```
 
-## Environment Variables
+#### Login
+```bash
+POST /auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+### Videos
+
+#### Get Videos (with filtering)
+```bash
+GET /videos?type=MOVIE&genre=action&sort=popular&page=1&limit=24
+```
+
+#### Get Video Details
+```bash
+GET /videos/the-sample-movie
+```
+
+### Streaming
+
+#### Get Movie Stream URL
+```bash
+GET /stream/{videoId}
+Authorization: Bearer <access_token>
+```
+
+#### Get Episode Stream URL
+```bash
+GET /stream/episode/{episodeId}
+Authorization: Bearer <access_token>
+```
+
+### Complete API documentation is available at `/docs` when the server is running.
+
+## 🗄️ Database Schema
+
+### Key Entities
+
+- **Users**: Authentication and user management
+- **Videos**: Movies and series metadata
+- **Seasons/Episodes**: Series structure
+- **Genres**: Content categorization
+- **Cast Members**: Actor/director information
+- **Ratings**: User ratings and reviews
+- **Comments**: User comments and discussions
+- **Watch History**: User viewing progress
+- **Favorites**: User watchlists
+
+### Sample Data
+
+The seed script creates:
+- Admin user: `admin@chauphim.com` / `admin123`
+- Test user: `user@chauphim.com` / `user123`
+- Sample movies and series
+- Genres, cast members, ratings, and comments
+
+## 🧪 Testing
+
+### Run tests
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+```
+
+### Test Structure
+
+- **Unit Tests**: Service layer logic
+- **Integration Tests**: API endpoints
+- **Authentication Tests**: Login, registration, JWT handling
+- **Video Tests**: Content management and streaming
+- **User Tests**: User features and preferences
+
+## 🐳 Docker Deployment
+
+### Build and run with Docker Compose
+
+```bash
+# Build and start all services
+docker-compose up --build
+
+# Run in background
+docker-compose up -d --build
+```
+
+### Production Deployment
+
+1. **Environment Variables**: Update `.env` with production values
+2. **Database Migration**: Run migrations in production
+```bash
+npm run db:deploy
+```
+3. **SSL Configuration**: Enable HTTPS and update CORS origins
+4. **Resource Limits**: Configure Docker memory and CPU limits
+5. **Monitoring**: Set up logging aggregation and monitoring
+
+## 📊 Monitoring & Logging
+
+### Logs
+
+- **Structured Logging**: JSON logs with correlation IDs
+- **Log Levels**: fatal, error, warn, info, debug, trace
+- **Request Logging**: Automatic request/response logging
+- **Error Tracking**: Detailed error information and stack traces
+
+### Health Checks
+
+```bash
+GET /health
+```
+
+Returns server status, environment, and timestamp.
+
+## 🔒 Security Features
+
+- **Helmet**: Security headers
+- **CORS**: Cross-origin resource sharing configuration
+- **Rate Limiting**: Request throttling
+- **JWT**: Secure token-based authentication
+- **Password Hashing**: bcrypt with configurable rounds
+- **Input Validation**: Request data validation with Zod
+- **SQL Injection Protection**: Prisma ORM with parameterized queries
+
+## 🚀 Performance Optimizations
+
+- **Redis Caching**: Configurable TTL for different content types
+- **Database Indexing**: Optimized queries with proper indexes
+- **Pagination**: Efficient large dataset handling
+- **Lazy Loading**: On-demand data loading
+- **Compression**: Gzip compression for responses
+- **Connection Pooling**: Optimized database connections
+
+## 🔧 Configuration
+
+### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NODE_ENV` | Environment mode | development |
-| `PORT` | Server port | 5000 |
-| `MONGODB_URI` | MongoDB connection string | mongodb://localhost:27017/chauphim |
-| `JWT_SECRET` | JWT secret key | - |
-| `JWT_EXPIRE` | JWT expiration time | 30d |
-| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name | - |
-| `CLOUDINARY_API_KEY` | Cloudinary API key | - |
-| `CLOUDINARY_API_SECRET` | Cloudinary API secret | - |
+| `NODE_ENV` | Environment (development/production) | `development` |
+| `PORT` | Server port | `3000` |
+| `DATABASE_URL` | MySQL connection string | Required |
+| `JWT_SECRET` | JWT signing secret | Required |
+| `REDIS_URL` | Redis connection string | Required |
+| `STORAGE_ENDPOINT` | MinIO/S3 endpoint | Required |
+| `STORAGE_BUCKET` | Storage bucket name | `vod` |
 
-## Usage Examples
+### Feature Flags
 
-### Creating a Movie
-```javascript
-POST /api/movies
-Content-Type: application/json
-Authorization: Bearer <jwt_token>
+- **Rate Limiting**: Configure request limits
+- **Cache TTL**: Set cache expiration times
+- **File Upload**: Configure maximum file sizes
+- **Pagination**: Set default and maximum page sizes
 
-{
-  "title": "The Matrix",
-  "originalTitle": "The Matrix",
-  "description": "A computer hacker learns about the true nature of reality.",
-  "year": 1999,
-  "country": "USA",
-  "type": "movie",
-  "genres": ["genre_id_1", "genre_id_2"],
-  "duration": 136,
-  "ageRating": "R"
-}
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Database Connection**: Ensure MySQL is running and credentials are correct
+2. **Redis Connection**: Verify Redis server is accessible
+3. **MinIO Setup**: Check MinIO credentials and bucket creation
+4. **Port Conflicts**: Ensure ports 3000, 3306, 6379, 9000 are available
+5. **Environment Variables**: Verify all required variables are set
+
+### Debug Mode
+
+```bash
+LOG_LEVEL=debug npm run dev
 ```
 
-### Searching Movies
-```javascript
-GET /api/movies/search?q=matrix&page=1&limit=10
+### Database Issues
+
+```bash
+# Reset database
+npm run db:migrate:reset
+
+# Check migration status
+npx prisma migrate status
+
+# Generate new migration
+npx prisma migrate dev
 ```
 
-### Adding to Favorites
-```javascript
-POST /api/favorites
-Content-Type: application/json
-Authorization: Bearer <jwt_token>
-
-{
-  "movieId": "movie_id_here"
-}
-```
-
-## Authentication
-
-The API uses JWT (JSON Web Tokens) for authentication. Include the token in the Authorization header:
-
-```
-Authorization: Bearer <your_jwt_token>
-```
-
-## User Roles
-
-- **user**: Regular user (can review, favorite movies)
-- **moderator**: Can manage movies and categories
-- **admin**: Full access to all features including user management
-
-## Error Handling
-
-The API returns consistent error responses:
-
-```json
-{
-  "status": "error",
-  "message": "Error description",
-  "errors": [] // Validation errors if any
-}
-```
-
-## Rate Limiting
-
-- **General**: 100 requests per 15 minutes
-- **Authentication**: 5 login attempts per 15 minutes
-
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+3. Make your changes
+4. Add tests for new features
+5. Run linting and tests
+6. Create a pull request
 
-## License
+### Code Standards
 
-This project is licensed under the MIT License.
+- **TypeScript**: Strict type checking
+- **ESLint**: Code linting
+- **Prettier**: Code formatting
+- **Conventional Commits**: Commit message format
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+
+## 🙏 Acknowledgments
+
+- Express.js community
+- Prisma team
+- MinIO project
+- All open source contributors
+
+## 📞 Support
+
+For support and questions:
+- Create an issue on GitHub
+- Check the documentation at `/docs`
+- Review the troubleshooting section
+
+---
+
+**Note**: This is a development/demo application. For production use, ensure proper security measures, monitoring, and scaling considerations are implemented.
