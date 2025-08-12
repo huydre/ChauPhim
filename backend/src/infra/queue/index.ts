@@ -8,6 +8,7 @@ import path from 'path';
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import storageService from '../storage';
+import prisma from '../db';
 
 const execAsync = promisify(exec);
 
@@ -267,9 +268,11 @@ class QueueService {
     try {
       logger.info(`Uploading ${localPath} to ${key}`);
       
-      // This is a placeholder - you'd implement actual MinIO upload here
-      // const minioClient = new Client({ ... });
-      // await minioClient.fPutObject(bucket, key, localPath, { 'Content-Type': contentType });
+      // Read file content as buffer
+      const fileBuffer = await fs.readFile(localPath);
+      
+      // Use the existing storage service to upload
+      await storageService.uploadFile(key, fileBuffer, contentType || 'application/octet-stream');
       
       logger.info(`Uploaded ${localPath} to ${key}`);
     } catch (error: any) {
@@ -297,13 +300,24 @@ class QueueService {
    */
   private async updateMovieSource(movieId: string, hlsManifestKey: string): Promise<void> {
     try {
-      logger.info(`Would update movie ${movieId} with HLS manifest: ${hlsManifestKey}`);
+      logger.info(`Updating movie ${movieId} with HLS manifest: ${hlsManifestKey}`);
       
-      // In real implementation:
-      // await prisma.movieSource.update({
-      //   where: { movieId },
-      //   data: { hlsManifestKey }
-      // });
+      // Upsert MovieSource with HLS manifest key
+      await prisma.movieSource.upsert({
+        where: { videoId: movieId },
+        update: { 
+          hlsManifestKey,
+          isPublished: true,
+          updatedAt: new Date()
+        },
+        create: {
+          videoId: movieId,
+          hlsManifestKey,
+          isPublished: true
+        }
+      });
+      
+      logger.info(`Successfully updated movie ${movieId} with HLS manifest`);
     } catch (error: any) {
       logger.error(`Failed to update movie source: ${movieId}`, error);
       throw error;
