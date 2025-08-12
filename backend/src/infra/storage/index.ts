@@ -70,6 +70,7 @@ class StorageService {
     if (config.CDN_BASE_URL) {
       return `${config.CDN_BASE_URL}/${key}`;
     }
+    // For MinIO, the URL format is: http://endpoint/bucket/key
     return `${config.STORAGE_ENDPOINT}/${this.bucket}/${key}`;
   }
 

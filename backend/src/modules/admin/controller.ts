@@ -179,6 +179,44 @@ export class AdminController {
     });
   });
 
+  // Get image upload URL for poster/backdrop
+  getImageUploadUrl = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access required',
+      });
+    }
+
+    const { id } = req.params;
+    const { filename, contentType, imageType } = req.body;
+    const result = await this.adminService.getImageUploadUrl(id!, filename, contentType, imageType);
+    
+    return res.json({
+      success: true,
+      data: result,
+    });
+  });
+
+  // Update movie image after upload
+  updateMovieImage = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access required',
+      });
+    }
+
+    const { id } = req.params;
+    const { imageType, imageKey } = req.body;
+    const result = await this.adminService.updateMovieImage(id!, imageType, imageKey);
+    
+    return res.json({
+      success: true,
+      data: result,
+    });
+  });
+
   // Get all movies for admin dashboard
   getAllMovies = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     if (!req.user || req.user.role !== 'ADMIN') {
@@ -200,6 +238,31 @@ export class AdminController {
       success: true,
       data: result.data,
       meta: result.meta,
+    });
+  });
+
+  // Get movie by ID
+  getMovieById = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access required',
+      });
+    }
+
+    const { id } = req.params;
+    const result = await this.adminService.getMovieById(id!);
+    
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: 'Movie not found',
+      });
+    }
+    
+    return res.json({
+      success: true,
+      data: result,
     });
   });
 

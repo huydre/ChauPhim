@@ -26,6 +26,10 @@ export const queryKeys = {
   videos: (params?: Record<string, any>) => ['videos', params] as const,
   video: (id: string) => ['videos', id] as const,
   
+  // Admin Movies
+  adminMovies: (params?: Record<string, any>) => ['admin', 'movies', params] as const,
+  adminMovie: (id: string) => ['admin', 'movies', id] as const,
+  
   // Genres
   genres: (params?: Record<string, any>) => ['genres', params] as const,
   genre: (id: string) => ['genres', id] as const,
@@ -132,6 +136,88 @@ export function useDeleteVideo() {
   })
 }
 
+// Admin Movies Hooks
+export function useAdminMovies(params?: Record<string, any>) {
+  return useQuery({
+    queryKey: queryKeys.adminMovies(params),
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      const searchParams = new URLSearchParams()
+      
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== '') {
+            searchParams.append(key, String(value))
+          }
+        })
+      }
+      
+      const endpoint = searchParams.toString() ? `/admin/movies?${searchParams}` : '/admin/movies'
+      return apiClient.get<PaginationResponse<Video>>(endpoint)
+    },
+  })
+}
+
+export function useAdminMovie(id: string) {
+  return useQuery({
+    queryKey: queryKeys.adminMovie(id),
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.get<{success: boolean, data: Video}>(`/admin/movies/${id}`)
+      return response.data
+    },
+    enabled: !!id,
+  })
+}
+
+export function useUpdateMovieStatus() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ id, isPublished }: { id: string; isPublished: boolean }) => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.put<{success: boolean, data: Video}>(`/admin/movies/${id}/publish`, { isPublished })
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'movies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats })
+    },
+  })
+}
+
+export function useUpdateMovie() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; [key: string]: any }) => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.put<{success: boolean, data: Video}>(`/admin/movies/${id}`, data)
+      return response.data
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'movies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminMovie(variables.id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats })
+    },
+  })
+}
+
+export function useDeleteMovie() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.delete(`/admin/movies/${id}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'movies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats })
+    },
+  })
+}
+
 // Genre Hooks
 export function useGenres(params?: Record<string, any>) {
   return useQuery({
@@ -140,6 +226,22 @@ export function useGenres(params?: Record<string, any>) {
       const apiClient = getAuthenticatedApiClient()
       const searchParams = new URLSearchParams(params)
       return apiClient.get<PaginationResponse<Genre>>(`/genres?${searchParams}`)
+    },
+  })
+}
+
+export function useAllGenres() {
+  return useQuery({
+    queryKey: ['genres', 'all'],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      try {
+        const response = await apiClient.get<PaginationResponse<Genre>>('/genres?limit=1000')
+        return response.data || []
+      } catch (error) {
+        console.warn('Failed to fetch genres:', error)
+        return []
+      }
     },
   })
 }
@@ -193,7 +295,23 @@ export function useCastMembers(params?: Record<string, any>) {
     queryFn: async () => {
       const apiClient = getAuthenticatedApiClient()
       const searchParams = new URLSearchParams(params)
-      return apiClient.get<PaginationResponse<CastMember>>(`/cast?${searchParams}`)
+      return apiClient.get<PaginationResponse<CastMember>>(`/casts?${searchParams}`)
+    },
+  })
+}
+
+export function useAllCasts() {
+  return useQuery({
+    queryKey: ['casts', 'all'],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      try {
+        const response = await apiClient.get<PaginationResponse<CastMember>>('/casts?limit=1000')
+        return response.data || []
+      } catch (error) {
+        console.warn('Failed to fetch casts:', error)
+        return []
+      }
     },
   })
 }
@@ -538,6 +656,66 @@ export function useAddSubtitle() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.video(variables.movieId) })
+    },
+  })
+}
+
+// Image upload hooks
+export function useGenerateImageUploadUrl() {
+  return useMutation({
+    mutationFn: async ({ 
+      movieId, 
+      filename, 
+      contentType, 
+      imageType 
+    }: { 
+      movieId: string
+      filename: string
+      contentType: string
+      imageType: 'poster' | 'backdrop'
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          uploadUrl: string
+          imageKey: string
+          imageType: string
+          filename: string
+          contentType: string
+          expiresAt: string
+        }
+      }>(`/admin/movies/${movieId}/images/upload-url`, { filename, contentType, imageType })
+    },
+  })
+}
+
+export function useUpdateMovieImage() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ 
+      movieId, 
+      imageType, 
+      imageKey 
+    }: { 
+      movieId: string
+      imageType: 'poster' | 'backdrop'
+      imageKey: string
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.put<{
+        success: boolean
+        data: {
+          message: string
+          imageUrl: string
+          posterUrl?: string
+          backdropUrl?: string
+        }
+      }>(`/admin/movies/${movieId}/images`, { imageType, imageKey })
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminMovie(variables.movieId) })
     },
   })
 }

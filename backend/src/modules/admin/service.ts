@@ -201,6 +201,8 @@ export class AdminService {
 
   async updateMovie(id: string, data: UpdateMovieData) {
     try {
+      logger.info(`Updating movie ${id} with data:`, data);
+      
       const video = await prisma.video.findUnique({
         where: { id },
       });
@@ -226,8 +228,12 @@ export class AdminService {
         },
       });
 
+      logger.info(`Video updated successfully: ${updatedVideo.id}`);
+
       // Update genres if provided
       if (data.genreIds !== undefined) {
+        logger.info(`Updating genres for video ${id}:`, data.genreIds);
+        
         // Remove existing genres
         await prisma.videoGenre.deleteMany({
           where: { videoId: id },
@@ -242,10 +248,14 @@ export class AdminService {
             })),
           });
         }
+        
+        logger.info(`Genres updated successfully for video ${id}`);
       }
 
       // Update cast if provided
       if (data.castIds !== undefined) {
+        logger.info(`Updating cast for video ${id}:`, data.castIds);
+        
         // Remove existing cast
         await prisma.videoCast.deleteMany({
           where: { videoId: id },
@@ -262,13 +272,20 @@ export class AdminService {
             })),
           });
         }
+        
+        logger.info(`Cast updated successfully for video ${id}`);
       }
 
-      logger.info(`Updated movie: ${updatedVideo.titleEn} (${id})`);
+      logger.info(`Movie update completed: ${updatedVideo.titleEn} (${id})`);
 
       return await this.getMovieById(id);
     } catch (error: any) {
-      logger.error('Failed to update movie:', error);
+      logger.error('Failed to update movie:', {
+        movieId: id,
+        error: error.message,
+        stack: error.stack,
+        data
+      });
       if (error instanceof AppError) throw error;
       throw new AppError('Failed to update movie', 500);
     }
@@ -578,6 +595,90 @@ export class AdminService {
     }
   }
 
+  async getImageUploadUrl(videoId: string, filename: string, contentType: string, imageType: 'poster' | 'backdrop') {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      // Generate image key based on type
+      const imageKey = storageService.generateKey(`videos/${videoId}/images/${imageType}`, filename);
+      
+      // Generate presigned upload URL
+      const uploadUrl = await storageService.getUploadPresignedUrl(
+        imageKey,
+        contentType,
+        3600
+      );
+
+      logger.info(`Generated ${imageType} upload URL for video ${videoId}, filename: ${filename}`);
+
+      return {
+        uploadUrl,
+        imageKey,
+        imageType,
+        filename,
+        contentType,
+        expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+      };
+    } catch (error: any) {
+      logger.error('Failed to generate image upload URL:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to generate image upload URL', 500);
+    }
+  }
+
+  async updateMovieImage(videoId: string, imageType: 'poster' | 'backdrop', imageKey: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      // Generate public URL for the uploaded image
+      const imageUrl = storageService.getPublicUrl(imageKey);
+      
+      logger.info(`Generated public URL for ${imageType}:`, {
+        imageKey,
+        imageUrl,
+        storageEndpoint: process.env.STORAGE_ENDPOINT,
+        bucket: process.env.STORAGE_BUCKET
+      });
+
+      // Update the appropriate field
+      const updateData: any = {};
+      if (imageType === 'poster') {
+        updateData.posterUrl = imageUrl;
+      } else {
+        updateData.backdropUrl = imageUrl;
+      }
+
+      const updatedVideo = await prisma.video.update({
+        where: { id: videoId },
+        data: updateData,
+      });
+
+      logger.info(`Updated ${imageType} for video ${videoId}: ${imageUrl}`);
+
+      return {
+        message: `${imageType} updated successfully`,
+        imageUrl,
+        [imageType + 'Url']: imageUrl,
+      };
+    } catch (error: any) {
+      logger.error('Failed to update movie image:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to update movie image', 500);
+    }
+  }
+
   async uploadSubtitles(videoId: string, language: string, subtitleKey: string) {
     try {
       const video = await prisma.video.findUnique({
@@ -740,7 +841,7 @@ export class AdminService {
     }
   }
 
-  private async getMovieById(id: string) {
+  async getMovieById(id: string) {
     return await prisma.video.findUnique({
       where: { id },
       include: {

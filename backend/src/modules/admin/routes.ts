@@ -63,6 +63,14 @@ const addSubtitleSchema = {
   }),
 };
 
+const imageUploadSchema = {
+  body: z.object({
+    filename: z.string().min(1, 'Filename is required'),
+    contentType: z.string().regex(/^image\/(jpeg|jpg|png|webp)$/, 'Invalid image type'),
+    imageType: z.enum(['poster', 'backdrop']),
+  }),
+};
+
 /**
  * @swagger
  * /admin/movies/upload-url:
@@ -236,6 +244,81 @@ router.post('/movies',
  *         description: Admin access required
  */
 router.get('/movies', adminController.getAllMovies);
+
+/**
+ * @swagger
+ * /admin/movies/{id}:
+ *   get:
+ *     summary: Get movie or series by ID
+ *     tags: [Admin - Movies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Movie ID
+ *     responses:
+ *       200:
+ *         description: Movie retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     slug:
+ *                       type: string
+ *                     titleVi:
+ *                       type: string
+ *                     titleEn:
+ *                       type: string
+ *                     descriptionVi:
+ *                       type: string
+ *                     descriptionEn:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                       enum: [MOVIE, SERIES]
+ *                     year:
+ *                       type: number
+ *                     ageRating:
+ *                       type: string
+ *                     durationMinutes:
+ *                       type: number
+ *                     isPublished:
+ *                       type: boolean
+ *                     viewsCount:
+ *                       type: string
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     genres:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     movieSources:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *       404:
+ *         description: Movie not found
+ *       403:
+ *         description: Admin access required
+ */
+router.get('/movies/:id', adminController.getMovieById);
 
 /**
  * @swagger
@@ -523,6 +606,45 @@ router.patch('/movies/:id/publish',
 
 /**
  * @swagger
+ * /admin/movies/{id}/publish:
+ *   put:
+ *     summary: Update movie publish status
+ *     tags: [Admin - Movies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               isPublished:
+ *                 type: boolean
+ *             required:
+ *               - isPublished
+ *     responses:
+ *       200:
+ *         description: Movie publish status updated successfully
+ *       404:
+ *         description: Movie not found
+ *       403:
+ *         description: Admin access required
+ */
+router.put('/movies/:id/publish', 
+  validateRequest(publishSchema),
+  adminController.togglePublishStatus
+);
+
+/**
+ * @swagger
  * /admin/movies/{id}/subtitles/upload-url:
  *   post:
  *     summary: Generate upload URL for subtitle files
@@ -560,6 +682,144 @@ router.patch('/movies/:id/publish',
 router.post('/movies/:id/subtitles/upload-url', 
   validateRequest(subtitleUploadSchema),
   adminController.getSubtitleUploadUrl
+);
+
+/**
+ * @swagger
+ * /admin/movies/{id}/images/upload-url:
+ *   post:
+ *     summary: Generate upload URL for movie images (poster/backdrop)
+ *     tags: [Admin - Movies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               filename:
+ *                 type: string
+ *                 example: "poster.jpg"
+ *               contentType:
+ *                 type: string
+ *                 enum: ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+ *                 example: "image/jpeg"
+ *               imageType:
+ *                 type: string
+ *                 enum: ["poster", "backdrop"]
+ *                 example: "poster"
+ *             required:
+ *               - filename
+ *               - contentType
+ *               - imageType
+ *     responses:
+ *       200:
+ *         description: Image upload URL generated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     uploadUrl:
+ *                       type: string
+ *                     imageKey:
+ *                       type: string
+ *                     imageUrl:
+ *                       type: string
+ *                     expiresAt:
+ *                       type: string
+ *                       format: date-time
+ *       404:
+ *         description: Movie not found
+ *       403:
+ *         description: Admin access required
+ */
+router.post('/movies/:id/images/upload-url', 
+  validateRequest(imageUploadSchema),
+  adminController.getImageUploadUrl
+);
+
+/**
+ * @swagger
+ * /admin/movies/{id}/images:
+ *   put:
+ *     summary: Update movie image URL after upload
+ *     description: Update the poster or backdrop URL after successful image upload
+ *     tags: [Admin]
+ *     security:
+ *       - adminAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Movie ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - imageType
+ *               - imageKey
+ *             properties:
+ *               imageType:
+ *                 type: string
+ *                 enum: [poster, backdrop]
+ *                 description: Type of image to update
+ *               imageKey:
+ *                 type: string
+ *                 description: S3 key of the uploaded image
+ *     responses:
+ *       200:
+ *         description: Image URL updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                     imageUrl:
+ *                       type: string
+ *                     posterUrl:
+ *                       type: string
+ *                     backdropUrl:
+ *                       type: string
+ *       404:
+ *         description: Movie not found
+ *       403:
+ *         description: Admin access required
+ */
+router.put('/movies/:id/images',
+  validateRequest({
+    body: z.object({
+      imageType: z.enum(['poster', 'backdrop']),
+      imageKey: z.string(),
+    }),
+  }),
+  adminController.updateMovieImage
 );
 
 /**
