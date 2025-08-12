@@ -48,7 +48,7 @@ export class AdminController {
     }
 
     try {
-      const result = await this.adminService.createMovie(movieData);
+      const result = await this.adminService.createMovie(movieData, req.user!.id);
       
       return res.json({
         success: true,
@@ -218,6 +218,27 @@ export class AdminController {
     return res.json({
       success: true,
       message: 'Movie deleted successfully',
+    });
+  });
+
+  // Get transcode jobs
+  getTranscodeJobs = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access required',
+      });
+    }
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const status = req.query.status as string;
+    
+    const result = await this.adminService.getTranscodeJobs(page, limit, status);
+    
+    return res.json({
+      success: true,
+      ...result,
     });
   });
 }

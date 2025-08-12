@@ -238,12 +238,59 @@ export interface DashboardStats {
 
 export interface AuditLog {
   id: string
-  user_id: string
+  userId?: string
+  userName: string
+  userEmail: string
+  userRole?: string
   action: string
   resource: string
-  resource_id?: string
-  ip_address?: string
-  user_agent?: string
-  created_at: string
-  user?: User
+  resourceId?: string
+  ip?: string
+  userAgent?: string
+  status: 'SUCCESS' | 'FAILED'
+  details?: Record<string, any>
+  timestamp: string
+  createdAt: string
+}
+
+export interface AuditLogStats {
+  summary: {
+    totalLogs: number
+    successCount: number
+    failedCount: number
+    successRate: number
+    uniqueUsersCount: number
+  }
+  actionBreakdown: Array<{
+    action: string
+    count: number
+  }>
+  timeBasedData: Array<{
+    period: string
+    totalLogs: number
+    successCount: number
+    failedCount: number
+  }>
+}
+
+export interface TranscodeJob {
+  id: string
+  videoId: string
+  jobId: string
+  status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  progress: number // 0-100
+  qualities: string[] // ["480p", "720p", "1080p"]
+  inputPath: string
+  outputPath: string
+  errorMessage?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
+  createdAt: string
+  updatedAt: string
+  video: {
+    titleVi: string
+    titleEn: string
+    slug: string
+    posterUrl?: string | null
+  }
 }

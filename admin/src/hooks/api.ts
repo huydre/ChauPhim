@@ -9,8 +9,10 @@ import type {
   DashboardStats,
   Comment,
   Rating,
-  Job,
+  TranscodeJob,
   AuditLog,
+  AuditLogStats,
+  Job,
   UploadUrlRequest,
   UploadUrlResponse
 } from '@/types/api'
@@ -299,6 +301,48 @@ export function useAuditLogs(params?: Record<string, any>) {
   })
 }
 
+export function useAuditLogStats(period: string = '7d') {
+  return useQuery({
+    queryKey: ['auditLogStats', period],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.get<{ data: AuditLogStats }>(`/audit-logs/stats?period=${period}`)
+    },
+  })
+}
+
+export function useExportAuditLogs() {
+  return useMutation({
+    mutationFn: async (params: { format?: string; filters?: Record<string, any> }) => {
+      const apiClient = getAuthenticatedApiClient()
+      const searchParams = new URLSearchParams({
+        format: params.format || 'csv',
+        ...params.filters,
+      })
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/audit-logs/export?${searchParams}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+        },
+      })
+      
+      if (!response.ok) {
+        throw new Error('Export failed')
+      }
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `audit-logs-${new Date().toISOString().split('T')[0]}.${params.format || 'csv'}`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    },
+  })
+}
+
 // Upload Hooks
 export function useCreateUploadUrl() {
   return useMutation<UploadUrlResponse, Error, UploadUrlRequest>({
@@ -495,5 +539,63 @@ export function useAddSubtitle() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.video(variables.movieId) })
     },
+  })
+}
+
+// Transcode jobs hooks
+export const useTranscodeJobs = (params?: {
+  page?: string
+  limit?: string
+  status?: string
+}) => {
+  const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set('page', params.page)
+  if (params?.limit) searchParams.set('limit', params.limit)
+  if (params?.status) searchParams.set('status', params.status)
+  searchParams.set('_t', Date.now().toString()) // Cache busting
+
+  return useQuery({
+    queryKey: ['transcode-jobs', params],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.get<{
+        success: boolean
+        data: TranscodeJob[]
+        pagination: {
+          page: number
+          limit: number
+          total: number
+          pages: number
+        }
+      }>(`/admin/transcode-jobs?${searchParams.toString()}`)
+      return response.data
+    },
+    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
+    staleTime: 0, // Always consider data stale
+  })
+}
+
+export const useTranscodeJobStatus = (videoId: string) => {
+  return useQuery({
+    queryKey: ['transcode-status', videoId],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.get<{
+        success: boolean
+        data: {
+          status: string
+          progress: number
+          message: string
+          jobId: string
+          startedAt?: string
+          completedAt?: string
+          errorMessage?: string
+          hlsManifestKey?: string
+        }
+      }>(`/admin/movies/${videoId}/transcode/status`)
+      return response.data
+    },
+    enabled: !!videoId,
+    refetchInterval: 3000, // Refresh every 3 seconds
   })
 }

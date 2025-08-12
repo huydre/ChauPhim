@@ -29,6 +29,7 @@ import ratingRoutes from './modules/ratings/routes';
 import watchRoutes from './modules/watch/routes';
 import streamRoutes from './modules/stream/routes';
 import adminRoutes from './modules/admin/routes';
+import auditRoutes from './modules/audit/routes';
 
 // Import middlewares
 import { errorHandler } from './middlewares/errorHandler';
@@ -104,6 +105,7 @@ app.use('/ratings', ratingRoutes);
 app.use('/watch', watchRoutes);
 app.use('/stream', streamRoutes);
 app.use('/admin', adminRoutes);
+app.use('/audit-logs', auditRoutes);
 
 // Error handling
 app.use(notFoundHandler);

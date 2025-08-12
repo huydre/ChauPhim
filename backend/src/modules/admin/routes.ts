@@ -389,6 +389,98 @@ router.get('/movies/:id/transcode/status', adminController.getTranscodingStatus)
 
 /**
  * @swagger
+ * /admin/transcode-jobs:
+ *   get:
+ *     summary: Get all transcode jobs with pagination
+ *     tags: [Admin - Transcode]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [QUEUED, PROCESSING, COMPLETED, FAILED]
+ *     responses:
+ *       200:
+ *         description: List of transcode jobs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       videoId:
+ *                         type: string
+ *                       jobId:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                         enum: [QUEUED, PROCESSING, COMPLETED, FAILED]
+ *                       progress:
+ *                         type: integer
+ *                         minimum: 0
+ *                         maximum: 100
+ *                       qualities:
+ *                         type: array
+ *                       startedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       completedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       video:
+ *                         type: object
+ *                         properties:
+ *                           titleVi:
+ *                             type: string
+ *                           titleEn:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *       403:
+ *         description: Admin access required
+ */
+router.get('/transcode-jobs', adminController.getTranscodeJobs);
+
+/**
+ * @swagger
  * /admin/movies/{id}/publish:
  *   patch:
  *     summary: Publish or unpublish movie

@@ -4,6 +4,7 @@ import queueService from '../../infra/queue';
 import { AppError } from '../../middlewares/errorHandler';
 import { VideoType, AgeRating } from '@prisma/client';
 import logger from '../../config/logger';
+import { auditLogger, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../../utils/auditLogger';
 
 export interface CreateMovieData {
   slug?: string;
@@ -66,7 +67,7 @@ export class AdminService {
     }
   }
 
-  async createMovie(data: CreateMovieData) {
+  async createMovie(data: CreateMovieData, userId?: string) {
     try {
       // Extract filename info for better defaults
       let filenameInfo = { name: '', ext: '', year: null as number | null };
@@ -156,9 +157,43 @@ export class AdminService {
 
       logger.info(`Created movie: ${video.titleVi} (${video.id}) with enhanced defaults`);
 
+      // Log audit
+      if (userId) {
+        await auditLogger.logSuccess({
+          userId,
+          action: AUDIT_ACTIONS.CREATE_VIDEO,
+          resource: AUDIT_RESOURCES.VIDEO,
+          resourceId: video.id,
+          details: {
+            title: video.titleVi,
+            type: video.type,
+            slug: video.slug,
+            hasRawVideo: !!data.rawVideoKey,
+          },
+        });
+      }
+
       return await this.getMovieById(video.id);
     } catch (error: any) {
       logger.error('Failed to create movie:', error);
+      
+      // Log failed audit
+      if (userId) {
+        await auditLogger.logFailure({
+          userId,
+          action: AUDIT_ACTIONS.CREATE_VIDEO,
+          resource: AUDIT_RESOURCES.VIDEO,
+          details: {
+            error: error.message,
+            inputData: {
+              titleVi: data.titleVi,
+              titleEn: data.titleEn,
+              type: data.type,
+            },
+          },
+        });
+      }
+      
       if (error instanceof AppError) throw error;
       throw new AppError('Failed to create movie', 500);
     }
@@ -250,17 +285,30 @@ export class AdminService {
       }
 
       // Add transcoding job to queue
-      const jobId = await queueService.addTranscodeJob({
-        videoId,
-        inputPath: rawVideoKey,
-        outputPath: `videos/${videoId}/hls`,
+      const job = await queueService.addTranscodeJob({
+        movieId: videoId,
+        rawVideoKey,
+        bucket: process.env.S3_BUCKET || 'chauphim-videos',
         qualities: qualities || ['480p', '720p', '1080p'],
       });
 
-      logger.info(`Started transcoding for video ${videoId}, job ID: ${jobId}`);
+      // Save job to database
+      await prisma.transcodeJob.create({
+        data: {
+          videoId,
+          jobId: job.id || '',
+          status: 'QUEUED',
+          progress: 0,
+          qualities: qualities || ['480p', '720p', '1080p'],
+          inputPath: rawVideoKey,
+          outputPath: `videos/${videoId}/hls`,
+        },
+      });
+
+      logger.info(`Started transcoding for video ${videoId}, job ID: ${job.id}`);
 
       return {
-        jobId,
+        jobId: job.id,
         status: 'queued',
         message: 'Transcoding job started successfully',
       };
@@ -273,36 +321,183 @@ export class AdminService {
 
   async getTranscodingStatus(videoId: string) {
     try {
-      // This would typically require storing jobId in database
-      // For now, we'll return a mock status
-      // In production, you'd store the jobId when starting transcoding
-      
       logger.info(`Checking transcoding status for video ${videoId}`);
 
-      // Check if movie source already exists (transcoding completed)
-      const movieSource = await prisma.movieSource.findUnique({
+      // Find the most recent transcode job for this video
+      const transcodeJob = await prisma.transcodeJob.findFirst({
         where: { videoId },
+        orderBy: { createdAt: 'desc' },
       });
 
-      if (movieSource && movieSource.isPublished) {
+      if (!transcodeJob) {
+        throw new AppError('No transcoding job found for this video', 404);
+      }
+
+      // Get real-time status from queue
+      const queueStatus = await queueService.getJobStatus(transcodeJob.jobId);
+      
+      if (queueStatus) {
+        // Update database with current queue status
+        const statusMap: { [key: string]: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' } = {
+          'waiting': 'QUEUED',
+          'active': 'PROCESSING', 
+          'completed': 'COMPLETED',
+          'failed': 'FAILED',
+          'delayed': 'QUEUED',
+        };
+
+        const dbStatus = statusMap[queueStatus.status] || 'QUEUED';
+        const progress = (typeof queueStatus.progress === 'number') ? queueStatus.progress : transcodeJob.progress;
+
+        // Update job in database
+        await prisma.transcodeJob.update({
+          where: { id: transcodeJob.id },
+          data: {
+            status: dbStatus,
+            progress: progress,
+            ...(dbStatus === 'PROCESSING' && !transcodeJob.startedAt && { startedAt: new Date() }),
+            ...(dbStatus === 'COMPLETED' && { completedAt: new Date(), progress: 100 }),
+            ...(dbStatus === 'FAILED' && { 
+              completedAt: new Date(), 
+              errorMessage: queueStatus.failedReason || 'Unknown error'
+            }),
+          },
+        });
+
         return {
-          status: 'completed',
-          progress: 100,
-          message: 'Transcoding completed successfully',
-          hlsManifestKey: movieSource.hlsManifestKey,
+          status: dbStatus.toLowerCase(),
+          progress: progress,
+          message: this.getStatusMessage(dbStatus, progress),
+          jobId: transcodeJob.jobId,
+          startedAt: transcodeJob.startedAt,
+          completedAt: transcodeJob.completedAt,
+          errorMessage: transcodeJob.errorMessage,
+          ...(dbStatus === 'COMPLETED' && {
+            hlsManifestKey: `${transcodeJob.outputPath}/master.m3u8`
+          }),
         };
       }
 
-      // If no movie source, check if transcoding is in progress
-      // In a real implementation, you'd query the job queue
+      // Fallback to database status if queue job not found
       return {
-        status: 'processing',
-        progress: 45,
-        message: 'Transcoding in progress...',
+        status: transcodeJob.status.toLowerCase(),
+        progress: transcodeJob.progress,
+        message: this.getStatusMessage(transcodeJob.status, transcodeJob.progress),
+        jobId: transcodeJob.jobId,
+        startedAt: transcodeJob.startedAt,
+        completedAt: transcodeJob.completedAt,
+        errorMessage: transcodeJob.errorMessage,
+        ...(transcodeJob.status === 'COMPLETED' && {
+          hlsManifestKey: `${transcodeJob.outputPath}/master.m3u8`
+        }),
       };
     } catch (error: any) {
       logger.error('Failed to get transcoding status:', error);
+      if (error instanceof AppError) throw error;
       throw new AppError('Failed to get transcoding status', 500);
+    }
+  }
+
+  async getTranscodeJobs(page: number = 1, limit: number = 20, status?: string) {
+    try {
+      const skip = (page - 1) * limit;
+      
+      const where = status ? { status: status as any } : {};
+      
+      const [jobs, total] = await Promise.all([
+        prisma.transcodeJob.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            video: {
+              select: {
+                titleVi: true,
+                titleEn: true,
+                slug: true,
+                posterUrl: true,
+              },
+            },
+          },
+        }),
+        prisma.transcodeJob.count({ where }),
+      ]);
+
+      // Update status from queue for active jobs
+      const updatedJobs = await Promise.all(
+        jobs.map(async (job) => {
+          if (job.status === 'QUEUED' || job.status === 'PROCESSING') {
+            try {
+              const queueStatus = await queueService.getJobStatus(job.jobId);
+              if (queueStatus) {
+                const statusMap: { [key: string]: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' } = {
+                  'waiting': 'QUEUED',
+                  'active': 'PROCESSING', 
+                  'completed': 'COMPLETED',
+                  'failed': 'FAILED',
+                  'delayed': 'QUEUED',
+                };
+
+                const dbStatus = statusMap[queueStatus.status] || job.status;
+                const progress = (typeof queueStatus.progress === 'number') ? queueStatus.progress : job.progress;
+
+                // Update in database
+                await prisma.transcodeJob.update({
+                  where: { id: job.id },
+                  data: {
+                    status: dbStatus,
+                    progress: progress,
+                    ...(dbStatus === 'PROCESSING' && !job.startedAt && { startedAt: new Date() }),
+                    ...(dbStatus === 'COMPLETED' && { completedAt: new Date(), progress: 100 }),
+                    ...(dbStatus === 'FAILED' && { 
+                      completedAt: new Date(), 
+                      errorMessage: queueStatus.failedReason || 'Unknown error'
+                    }),
+                  },
+                });
+
+                return { ...job, status: dbStatus, progress };
+              }
+            } catch (error) {
+              logger.error(`Failed to get queue status for job ${job.jobId}:`, error);
+            }
+          }
+          return job;
+        })
+      );
+
+      return {
+        data: updatedJobs,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error: any) {
+      logger.error('Failed to get transcode jobs:', error);
+      throw new AppError('Failed to get transcode jobs', 500);
+    }
+  }
+
+  private getStatusMessage(status: string, progress: number): string {
+    switch (status) {
+      case 'QUEUED':
+      case 'queued':
+        return 'Transcoding job is queued and waiting to start';
+      case 'PROCESSING':
+      case 'processing':
+        return `Transcoding in progress: ${progress}% completed`;
+      case 'COMPLETED':
+      case 'completed':
+        return 'Transcoding completed successfully';
+      case 'FAILED':
+      case 'failed':
+        return 'Transcoding failed';
+      default:
+        return 'Unknown status';
     }
   }
 
