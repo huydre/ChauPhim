@@ -38,12 +38,32 @@ export class AdminController {
     }
 
     const movieData = req.body;
-    const result = await this.adminService.createMovie(movieData);
     
-    return res.json({
-      success: true,
-      data: result,
-    });
+    // Validate at least one title is provided
+    if (!movieData.titleVi && !movieData.titleEn && !movieData.rawVideoKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one title (titleVi or titleEn) or video file must be provided',
+      });
+    }
+
+    try {
+      const result = await this.adminService.createMovie(movieData);
+      
+      return res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error('Create movie error:', error);
+      
+      // Return more detailed error information
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || 'Failed to create movie',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      });
+    }
   });
 
   // Update movie/series

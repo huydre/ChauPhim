@@ -4,6 +4,7 @@ import logger from './config/logger';
 import prisma from './infra/db';
 import cacheService from './infra/cache';
 import queueService from './infra/queue';
+import setupStorage from './infra/storage/setup';
 
 async function startServer() {
   try {
@@ -23,6 +24,15 @@ async function startServer() {
     } catch (error: any) {
       logger.error('❌ Redis connection failed:', error.message);
       logger.info('💡 Make sure Redis is running on port 6379');
+    }
+
+    // Setup storage (create bucket if needed)
+    try {
+      await setupStorage();
+      logger.info('✅ Storage setup completed');
+    } catch (error: any) {
+      logger.error('❌ Storage setup failed:', error.message);
+      logger.info('💡 Make sure MinIO is running on port 9000');
     }
 
     // Start the server

@@ -20,13 +20,13 @@ const uploadUrlSchema = {
 
 const createMovieSchema = {
   body: z.object({
-    slug: z.string().min(1, 'Slug is required'),
-    titleVi: z.string().min(1, 'Vietnamese title is required'),
-    titleEn: z.string().min(1, 'English title is required'),
-    descriptionVi: z.string().min(1, 'Vietnamese description is required'),
-    descriptionEn: z.string().min(1, 'English description is required'),
-    type: z.enum(['MOVIE', 'SERIES']),
-    year: z.number().min(1900).max(2030),
+    slug: z.string().optional(),
+    titleVi: z.string().optional(),
+    titleEn: z.string().optional(), 
+    descriptionVi: z.string().optional(),
+    descriptionEn: z.string().optional(),
+    type: z.enum(['MOVIE', 'SERIES']).default('MOVIE'),
+    year: z.number().min(1900).max(2030).optional(),
     posterUrl: z.string().url().optional(),
     backdropUrl: z.string().url().optional(),
     ageRating: z.string().optional(),

@@ -2,17 +2,17 @@ import prisma from '../../infra/db';
 import storageService from '../../infra/storage';
 import queueService from '../../infra/queue';
 import { AppError } from '../../middlewares/errorHandler';
-import { VideoType } from '@prisma/client';
+import { VideoType, AgeRating } from '@prisma/client';
 import logger from '../../config/logger';
 
 export interface CreateMovieData {
-  slug: string;
-  titleVi: string;
-  titleEn: string;
-  descriptionVi: string;
-  descriptionEn: string;
-  type: VideoType;
-  year: number;
+  slug?: string;
+  titleVi?: string;
+  titleEn?: string;
+  descriptionVi?: string;
+  descriptionEn?: string;
+  type?: VideoType;
+  year?: number;
   posterUrl?: string;
   backdropUrl?: string;
   ageRating?: string;
@@ -68,41 +68,76 @@ export class AdminService {
 
   async createMovie(data: CreateMovieData) {
     try {
+      // Extract filename info for better defaults
+      let filenameInfo = { name: '', ext: '', year: null as number | null };
+      if (data.rawVideoKey) {
+        const filename = data.rawVideoKey.split('/').pop()?.split('.')[0] || '';
+        filenameInfo.name = filename;
+        
+        // Try to extract year from filename
+        const yearMatch = filename.match(/(\d{4})/);
+        if (yearMatch && yearMatch[1]) {
+          const extractedYear = parseInt(yearMatch[1]);
+          if (extractedYear >= 1900 && extractedYear <= new Date().getFullYear() + 2) {
+            filenameInfo.year = extractedYear;
+          }
+        }
+      }
+
+      // Generate smart default values
+      const currentYear = new Date().getFullYear();
+      const defaultTitle = data.titleVi || data.titleEn || filenameInfo.name || 'Untitled Movie';
+      const slug = data.slug || this.generateSlug(defaultTitle);
+      
       // Check if slug already exists
       const existingVideo = await prisma.video.findUnique({
-        where: { slug: data.slug },
+        where: { slug },
       });
 
       if (existingVideo) {
         throw new AppError('Movie with this slug already exists', 400);
       }
 
-      // Create video record
+      // Smart defaults based on video info
+      const movieData = {
+        slug,
+        titleVi: data.titleVi || defaultTitle,
+        titleEn: data.titleEn || defaultTitle,
+        descriptionVi: data.descriptionVi || `Phim ${defaultTitle} - Được upload vào ${new Date().toLocaleDateString('vi-VN')}`,
+        descriptionEn: data.descriptionEn || `${defaultTitle} - Uploaded on ${new Date().toLocaleDateString('en-US')}`,
+        type: data.type || 'MOVIE',
+        year: data.year || filenameInfo.year || currentYear,
+        posterUrl: data.posterUrl,
+        backdropUrl: data.backdropUrl,
+        ageRating: this.normalizeAgeRating(data.ageRating),
+        durationMinutes: data.durationMinutes || 120, // Default 2 hours
+        isPublished: false, // Start as unpublished
+        viewsCount: 0,
+      };
+
+      // Create video record with enhanced defaults
       const video = await prisma.video.create({
-        data: {
-          slug: data.slug,
-          titleVi: data.titleVi,
-          titleEn: data.titleEn,
-          descriptionVi: data.descriptionVi,
-          descriptionEn: data.descriptionEn,
-          type: data.type,
-          year: data.year,
-          posterUrl: data.posterUrl,
-          backdropUrl: data.backdropUrl,
-          ageRating: (data.ageRating as any) || 'PG13',
-          durationMinutes: data.durationMinutes,
-          isPublished: false, // Start as unpublished
-          viewsCount: 0,
-        },
+        data: movieData,
       });
 
-      // Associate genres if provided
+      // Create movie source if rawVideoKey is provided
+      if (data.rawVideoKey) {
+        await prisma.movieSource.create({
+          data: {
+            videoId: video.id,
+            isPublished: false, // Start as unpublished
+          },
+        });
+      }
+
+      // Associate genres if provided, otherwise add default genre
       if (data.genreIds && data.genreIds.length > 0) {
         await prisma.videoGenre.createMany({
           data: data.genreIds.map(genreId => ({
             videoId: video.id,
             genreId,
           })),
+          skipDuplicates: true,
         });
       }
 
@@ -113,12 +148,13 @@ export class AdminService {
             videoId: video.id,
             castId,
             role: 'ACTOR' as any,
-            roleName: 'Actor', // Add required roleName field
+            roleName: 'Actor',
           })),
+          skipDuplicates: true,
         });
       }
 
-      logger.info(`Created movie: ${video.titleEn} (${video.id})`);
+      logger.info(`Created movie: ${video.titleVi} (${video.id}) with enhanced defaults`);
 
       return await this.getMovieById(video.id);
     } catch (error: any) {
@@ -567,5 +603,45 @@ export class AdminService {
     };
 
     return labels[language] || language.toUpperCase();
+  }
+
+  private normalizeAgeRating(ageRating?: string): AgeRating {
+    if (!ageRating) return 'PG13';
+    
+    const normalized = ageRating.toUpperCase().replace(/[-\s]/g, '');
+    
+    // Map various formats to Prisma enum values
+    const mapping: Record<string, AgeRating> = {
+      'G': 'G',
+      'GENERAL': 'G',
+      'PG': 'PG',
+      'PARENTALGUIDANCE': 'PG',
+      'PG13': 'PG13',
+      'PARENTALGUIDANCE13': 'PG13',
+      'R': 'R',
+      'RESTRICTED': 'R',
+      'NC17': 'NC17',
+      'NOCHILDRENUNDER17': 'NC17',
+    };
+
+    return mapping[normalized] || 'PG13'; // Default to PG13 if unknown
+  }
+
+  private generateSlug(title: string): string {
+    if (!title) {
+      return `movie-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    }
+
+    return title
+      .toLowerCase()
+      .normalize('NFD') // Normalize Vietnamese characters
+      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+      .replace(/[đĐ]/g, 'd') // Handle Vietnamese đ
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .trim() // Remove leading/trailing spaces
+      .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+      || `movie-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   }
 }

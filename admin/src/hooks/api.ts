@@ -309,3 +309,191 @@ export function useCreateUploadUrl() {
     },
   })
 }
+
+// Admin Movie Hooks
+export function useGenerateMovieUploadUrl() {
+  return useMutation({
+    mutationFn: async (data: { filename: string; contentType: string }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          uploadUrl: string
+          videoKey: string
+          expiresAt: string
+        }
+      }>('/admin/movies/upload-url', data)
+    },
+  })
+}
+
+export function useCreateMovie() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (data: {
+      slug?: string
+      titleVi?: string
+      titleEn?: string
+      descriptionVi?: string
+      descriptionEn?: string
+      type: 'MOVIE' | 'SERIES'
+      year?: number
+      posterUrl?: string
+      backdropUrl?: string
+      ageRating?: string
+      durationMinutes?: number
+      genreIds?: string[]
+      castIds?: string[]
+      rawVideoKey?: string
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          id: string
+          slug: string
+          titleVi: string
+          titleEn: string
+          type: 'MOVIE' | 'SERIES'
+          isPublished: boolean
+          createdAt: string
+          genres: any[]
+          casts: any[]
+        }
+      }>('/admin/movies', data)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats })
+    },
+  })
+}
+
+export function useStartTranscoding() {
+  return useMutation({
+    mutationFn: async ({ 
+      movieId, 
+      rawVideoKey, 
+      qualities 
+    }: { 
+      movieId: string
+      rawVideoKey: string
+      qualities?: string[]
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          jobId: string
+          status: string
+          message: string
+        }
+      }>(`/admin/movies/${movieId}/transcode`, {
+        rawVideoKey,
+        qualities: qualities || ['480p', '720p', '1080p']
+      })
+    },
+  })
+}
+
+export function useTranscodingStatus(movieId: string, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['movies', movieId, 'transcoding-status'],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.get<{
+        success: boolean
+        data: {
+          status: 'queued' | 'processing' | 'completed' | 'failed'
+          progress: number
+          message: string
+          hlsManifestKey?: string
+        }
+      }>(`/admin/movies/${movieId}/transcode/status`)
+    },
+    enabled: enabled && !!movieId,
+    refetchInterval: (query) => {
+      // Keep polling if status is not final
+      const status = query.state.data?.data?.status
+      return (status === 'queued' || status === 'processing') ? 5000 : false
+    },
+  })
+}
+
+export function usePublishMovie() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ movieId, isPublished }: { movieId: string; isPublished: boolean }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.patch<{
+        success: boolean
+        data: {
+          id: string
+          slug: string
+          titleVi: string
+          titleEn: string
+          isPublished: boolean
+          movieSources: Array<{
+            hlsManifestKey: string
+            isPublished: boolean
+            subtitlesJson: any[]
+          }>
+        }
+      }>(`/admin/movies/${movieId}/publish`, { isPublished })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
+    },
+  })
+}
+
+export function useGenerateSubtitleUploadUrl() {
+  return useMutation({
+    mutationFn: async ({ movieId, language }: { movieId: string; language: string }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          uploadUrl: string
+          subtitleKey: string
+          language: string
+          expiresAt: string
+        }
+      }>(`/admin/movies/${movieId}/subtitles/upload-url`, { language })
+    },
+  })
+}
+
+export function useAddSubtitle() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ 
+      movieId, 
+      language, 
+      subtitleKey 
+    }: { 
+      movieId: string
+      language: string
+      subtitleKey: string
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          message: string
+          subtitles: Array<{
+            lang: string
+            label: string
+            key: string
+          }>
+        }
+      }>(`/admin/movies/${movieId}/subtitles`, { language, subtitleKey })
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.video(variables.movieId) })
+    },
+  })
+}
