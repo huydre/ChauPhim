@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { StreamController } from './controller';
 import { authenticate } from '../../middlewares/auth';
-import { validateRequest, idParamSchema } from '../../middlewares/validation';
+import { validateRequest, idParamSchema, videoIdParamSchema, episodeIdParamSchema } from '../../middlewares/validation';
 
 const router = Router();
 const streamController = new StreamController();
@@ -49,7 +49,7 @@ router.use(authenticate);
  *         description: Access denied
  */
 router.get('/:videoId', 
-  validateRequest({ params: idParamSchema }),
+  validateRequest({ params: videoIdParamSchema }),
   streamController.getMovieStream
 );
 
@@ -89,7 +89,7 @@ router.get('/:videoId',
  *                       format: date-time
  */
 router.get('/episode/:episodeId', 
-  validateRequest({ params: idParamSchema }),
+  validateRequest({ params: episodeIdParamSchema }),
   streamController.getEpisodeStream
 );
 

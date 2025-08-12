@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { TranscodeQueueWidget } from '@/components/dashboard/transcode-queue-widget'
 import { 
   BarChart3, 
   TrendingUp, 
@@ -338,6 +339,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Transcode Queue Widget */}
+      <TranscodeQueueWidget />
 
       {/* Quick Actions */}
       <Card>

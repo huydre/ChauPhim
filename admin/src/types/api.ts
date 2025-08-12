@@ -38,23 +38,36 @@ export interface RefreshTokenRequest {
 export interface Video {
   id: string
   slug: string
-  title_vi: string
-  title_en?: string
-  description_vi?: string
-  description_en?: string
+  titleVi: string
+  titleEn?: string
+  descriptionVi?: string
+  descriptionEn?: string
   type: 'MOVIE' | 'SERIES'
   year: number
-  age_rating?: string
-  poster_url?: string
-  backdrop_url?: string
-  duration_minutes?: number
-  is_published: boolean
-  created_at: string
-  updated_at: string
+  ageRating?: string
+  posterUrl?: string
+  backdropUrl?: string
+  durationMinutes?: number
+  isPublished: boolean
+  viewsCount?: string
+  createdAt: string
+  updatedAt: string
   genres: Genre[]
-  cast: CastMember[]
+  cast?: CastMember[]
   seasons?: Season[]
-  sources?: VideoSource[]
+  movieSources?: MovieSource[]
+  _count?: {
+    ratings: number
+    comments: number
+  }
+}
+
+export interface MovieSource {
+  id: string
+  isPublished: boolean
+  hlsManifestKey?: string
+  rawVideoKey?: string
+  trailerHlsManifestKey?: string
 }
 
 export interface VideoSource {
@@ -105,12 +118,12 @@ export interface Subtitle {
 export interface Genre {
   id: string
   slug: string
-  name_vi: string
-  name_en?: string
+  nameVi: string
+  nameEn?: string
   description?: string
-  video_count?: number
-  created_at: string
-  updated_at: string
+  videoCount?: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface CastMember {
@@ -203,11 +216,11 @@ export interface PaginationRequest {
 
 export interface PaginationResponse<T> {
   data: T[]
-  pagination: {
+  meta: {
     page: number
     limit: number
     total: number
-    pages: number
+    totalPages: number
   }
 }
 
@@ -238,12 +251,59 @@ export interface DashboardStats {
 
 export interface AuditLog {
   id: string
-  user_id: string
+  userId?: string
+  userName: string
+  userEmail: string
+  userRole?: string
   action: string
   resource: string
-  resource_id?: string
-  ip_address?: string
-  user_agent?: string
-  created_at: string
-  user?: User
+  resourceId?: string
+  ip?: string
+  userAgent?: string
+  status: 'SUCCESS' | 'FAILED'
+  details?: Record<string, any>
+  timestamp: string
+  createdAt: string
+}
+
+export interface AuditLogStats {
+  summary: {
+    totalLogs: number
+    successCount: number
+    failedCount: number
+    successRate: number
+    uniqueUsersCount: number
+  }
+  actionBreakdown: Array<{
+    action: string
+    count: number
+  }>
+  timeBasedData: Array<{
+    period: string
+    totalLogs: number
+    successCount: number
+    failedCount: number
+  }>
+}
+
+export interface TranscodeJob {
+  id: string
+  videoId: string
+  jobId: string
+  status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  progress: number // 0-100
+  qualities: string[] // ["480p", "720p", "1080p"]
+  inputPath: string
+  outputPath: string
+  errorMessage?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
+  createdAt: string
+  updatedAt: string
+  video: {
+    titleVi: string
+    titleEn: string
+    slug: string
+    posterUrl?: string | null
+  }
 }

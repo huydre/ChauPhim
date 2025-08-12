@@ -20,124 +20,36 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import type { Video, PaginationResponse } from '@/types/api'
-import { getAuthenticatedApiClient } from '@/lib/auth-utils'
-
-// Mock data for demonstration
-const mockVideos: Video[] = [
-  {
-    id: '1',
-    slug: 'avengers-endgame',
-    title_vi: 'Avengers: Endgame',
-    title_en: 'Avengers: Endgame',
-    type: 'MOVIE',
-    year: 2019,
-    age_rating: 'PG-13',
-    duration_minutes: 181,
-    is_published: true,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-    genres: [
-      { id: '1', slug: 'action', name_vi: 'Hành động', name_en: 'Action' },
-      { id: '2', slug: 'adventure', name_vi: 'Phiêu lưu', name_en: 'Adventure' },
-    ],
-    cast: [
-      { id: '1', name: 'Robert Downey Jr.', role: 'Tony Stark / Iron Man' },
-      { id: '2', name: 'Chris Evans', role: 'Steve Rogers / Captain America' },
-    ],
-  },
-  {
-    id: '2',
-    slug: 'stranger-things',
-    title_vi: 'Stranger Things',
-    title_en: 'Stranger Things',
-    type: 'SERIES',
-    year: 2016,
-    age_rating: 'TV-14',
-    is_published: true,
-    created_at: '2024-01-02T00:00:00Z',
-    updated_at: '2024-01-02T00:00:00Z',
-    genres: [
-      { id: '3', slug: 'drama', name_vi: 'Chính kịch', name_en: 'Drama' },
-      { id: '4', slug: 'sci-fi', name_vi: 'Khoa học viễn tưởng', name_en: 'Sci-Fi' },
-    ],
-    cast: [
-      { id: '3', name: 'Millie Bobby Brown', role: 'Eleven' },
-      { id: '4', name: 'Finn Wolfhard', role: 'Mike Wheeler' },
-    ],
-    seasons: [
-      {
-        id: '1',
-        video_id: '2',
-        season_number: 1,
-        name_vi: 'Mùa 1',
-        name_en: 'Season 1',
-        episodes: [],
-      },
-    ],
-  },
-]
+import { useAdminMovies, useUpdateMovieStatus } from '@/hooks/api'
 
 export default function VideosPage() {
-  const [videos, setVideos] = useState<Video[]>(mockVideos)
-  const [isLoading, setIsLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<'ALL' | 'MOVIE' | 'SERIES'>('ALL')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(20)
 
-  useEffect(() => {
-    loadVideos()
-  }, [currentPage, searchTerm, filterType])
-
-  const loadVideos = async () => {
-    try {
-      setIsLoading(true)
-      // TODO: Replace with real API call
-      // const apiClient = getAuthenticatedApiClient()
-      // const params = new URLSearchParams({
-      //   page: currentPage.toString(),
-      //   limit: pageSize.toString(),
-      //   ...(searchTerm && { q: searchTerm }),
-      //   ...(filterType !== 'ALL' && { type: filterType }),
-      // })
-      // const response = await apiClient.get<PaginationResponse<Video>>(`/videos?${params}`)
-      // setVideos(response.data)
-      
-      // For now, use mock data with filtering
-      let filteredVideos = mockVideos
-      
-      if (searchTerm) {
-        filteredVideos = filteredVideos.filter(video => 
-          video.title_vi.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          video.title_en?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      }
-      
-      if (filterType !== 'ALL') {
-        filteredVideos = filteredVideos.filter(video => video.type === filterType)
-      }
-      
-      setVideos(filteredVideos)
-    } catch (error) {
-      console.error('Failed to load videos:', error)
-    } finally {
-      setIsLoading(false)
-    }
+  // API query parameters
+  const queryParams = {
+    page: currentPage,
+    limit: pageSize,
+    ...(searchTerm && { search: searchTerm }),
+    ...(filterType !== 'ALL' && { type: filterType }),
   }
+
+  // Fetch movies from API
+  const { data: moviesResponse, isLoading, error } = useAdminMovies(queryParams)
+  const updateMovieStatusMutation = useUpdateMovieStatus()
+
+  const videos = moviesResponse?.data || []
+  const totalPages = moviesResponse?.meta?.totalPages || 1
+  const totalCount = moviesResponse?.meta?.total || 0
 
   const togglePublishStatus = async (video: Video) => {
     try {
-      // TODO: API call to toggle publish status
-      // const apiClient = getAuthenticatedApiClient()
-      // await apiClient.patch(`/videos/${video.id}`, {
-      //   is_published: !video.is_published
-      // })
-      
-      setVideos(prev => prev.map(v => 
-        v.id === video.id 
-          ? { ...v, is_published: !v.is_published }
-          : v
-      ))
+      await updateMovieStatusMutation.mutateAsync({
+        id: video.id,
+        isPublished: !video.isPublished
+      })
     } catch (error) {
       console.error('Failed to toggle publish status:', error)
     }
@@ -203,7 +115,7 @@ export default function VideosPage() {
 
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <VideoIcon className="h-4 w-4" />
-              {videos.length} videos
+              {totalCount} videos
             </div>
           </div>
         </CardContent>
@@ -214,10 +126,10 @@ export default function VideosPage() {
         {videos.map((video) => (
           <Card key={video.id} className="overflow-hidden">
             <div className="aspect-video bg-gray-100 relative">
-              {video.poster_url ? (
+              {video.posterUrl ? (
                 <img
-                  src={video.poster_url}
-                  alt={video.title_vi}
+                  src={video.posterUrl}
+                  alt={video.titleVi}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -228,8 +140,8 @@ export default function VideosPage() {
               
               {/* Status Badge */}
               <div className="absolute top-2 left-2">
-                <Badge variant={video.is_published ? 'default' : 'secondary'}>
-                  {video.is_published ? 'Published' : 'Draft'}
+                <Badge variant={video.isPublished ? 'default' : 'secondary'}>
+                  {video.isPublished ? 'Published' : 'Draft'}
                 </Badge>
               </div>
 
@@ -246,11 +158,11 @@ export default function VideosPage() {
                 {/* Title */}
                 <div>
                   <h3 className="font-semibold text-lg line-clamp-1">
-                    {video.title_vi}
+                    {video.titleVi}
                   </h3>
-                  {video.title_en && (
+                  {video.titleEn && (
                     <p className="text-sm text-gray-600 line-clamp-1">
-                      {video.title_en}
+                      {video.titleEn}
                     </p>
                   )}
                 </div>
@@ -261,15 +173,15 @@ export default function VideosPage() {
                     <Calendar className="h-3 w-3" />
                     {video.year}
                   </div>
-                  {video.duration_minutes && (
+                  {video.durationMinutes && (
                     <div className="flex items-center gap-1">
                       <VideoIcon className="h-3 w-3" />
-                      {formatDuration(video.duration_minutes)}
+                      {formatDuration(video.durationMinutes)}
                     </div>
                   )}
-                  {video.age_rating && (
+                  {video.ageRating && (
                     <Badge variant="outline" className="text-xs">
-                      {video.age_rating}
+                      {video.ageRating}
                     </Badge>
                   )}
                 </div>
@@ -278,7 +190,7 @@ export default function VideosPage() {
                 <div className="flex flex-wrap gap-1">
                   {video.genres.slice(0, 3).map((genre) => (
                     <Badge key={genre.id} variant="secondary" className="text-xs">
-                      {genre.name_vi}
+                      {genre.nameVi}
                     </Badge>
                   ))}
                   {video.genres.length > 3 && (
@@ -295,22 +207,23 @@ export default function VideosPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => togglePublishStatus(video)}
+                      disabled={updateMovieStatusMutation.isPending}
                     >
-                      {video.is_published ? (
+                      {video.isPublished ? (
                         <EyeOff className="h-3 w-3" />
                       ) : (
                         <Eye className="h-3 w-3" />
                       )}
                     </Button>
                     <Button size="sm" variant="outline" asChild>
-                      <Link href={`/dashboard/videos/${video.id}/edit`}>
+                      <Link href={`/videos/${video.id}/edit`}>
                         <Edit className="h-3 w-3" />
                       </Link>
                     </Button>
                   </div>
                   
                   <Button size="sm" asChild>
-                    <Link href={`/dashboard/videos/${video.id}`}>
+                    <Link href={`/videos/${video.id}`}>
                       View Details
                     </Link>
                   </Button>
@@ -362,6 +275,68 @@ export default function VideosPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <div className="text-red-500 mb-4">⚠️</div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Failed to load videos</h3>
+            <p className="text-gray-600 mb-6">
+              There was an error loading the videos. Please try again.
+            </p>
+            <Button onClick={() => window.location.reload()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && !isLoading && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} videos
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <div className="flex gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    const page = i + 1
+                    return (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </Button>
+                    )
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

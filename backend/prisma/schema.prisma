@@ -123,6 +123,7 @@ model Video {
   watchHistory WatchHistory[]
   seasons      Season[]
   movieSources MovieSource[]
+  transcodeJobs TranscodeJob[]
 
   @@map("videos")
 }
@@ -304,16 +305,47 @@ model Subscription {
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String?  @map("user_id")
-  action    String
-  resource  String
-  ip        String?
-  userAgent String?  @map("user_agent")
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String
+  resource   String
+  resourceId String?  @map("resource_id")
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  status     String   @default("SUCCESS") // SUCCESS, FAILED
+  details    String?  @db.Text // JSON string for additional details
+  createdAt  DateTime @default(now()) @map("created_at")
 
   // Relations
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@map("audit_logs")
+}
+
+enum TranscodeStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model TranscodeJob {
+  id          String           @id @default(uuid())
+  videoId     String
+  jobId       String           @unique // Bull queue job ID
+  status      TranscodeStatus  @default(QUEUED)
+  progress    Int              @default(0) // 0-100
+  qualities   Json             // Array of qualities: ["480p", "720p", "1080p"]
+  inputPath   String
+  outputPath  String
+  errorMessage String? @db.Text
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  // Relations
+  video       Video            @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@map("transcode_jobs")
 }

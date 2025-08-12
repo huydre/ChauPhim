@@ -55,6 +55,14 @@ export const idParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+export const videoIdParamSchema = z.object({
+  videoId: z.string().uuid(),
+});
+
+export const episodeIdParamSchema = z.object({
+  episodeId: z.string().uuid(),
+});
+
 export const slugParamSchema = z.object({
   slug: z.string().min(1),
 });

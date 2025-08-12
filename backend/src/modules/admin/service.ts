@@ -2,17 +2,18 @@ import prisma from '../../infra/db';
 import storageService from '../../infra/storage';
 import queueService from '../../infra/queue';
 import { AppError } from '../../middlewares/errorHandler';
-import { VideoType } from '@prisma/client';
+import { VideoType, AgeRating } from '@prisma/client';
 import logger from '../../config/logger';
+import { auditLogger, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../../utils/auditLogger';
 
 export interface CreateMovieData {
-  slug: string;
-  titleVi: string;
-  titleEn: string;
-  descriptionVi: string;
-  descriptionEn: string;
-  type: VideoType;
-  year: number;
+  slug?: string;
+  titleVi?: string;
+  titleEn?: string;
+  descriptionVi?: string;
+  descriptionEn?: string;
+  type?: VideoType;
+  year?: number;
   posterUrl?: string;
   backdropUrl?: string;
   ageRating?: string;
@@ -66,43 +67,78 @@ export class AdminService {
     }
   }
 
-  async createMovie(data: CreateMovieData) {
+  async createMovie(data: CreateMovieData, userId?: string) {
     try {
+      // Extract filename info for better defaults
+      let filenameInfo = { name: '', ext: '', year: null as number | null };
+      if (data.rawVideoKey) {
+        const filename = data.rawVideoKey.split('/').pop()?.split('.')[0] || '';
+        filenameInfo.name = filename;
+        
+        // Try to extract year from filename
+        const yearMatch = filename.match(/(\d{4})/);
+        if (yearMatch && yearMatch[1]) {
+          const extractedYear = parseInt(yearMatch[1]);
+          if (extractedYear >= 1900 && extractedYear <= new Date().getFullYear() + 2) {
+            filenameInfo.year = extractedYear;
+          }
+        }
+      }
+
+      // Generate smart default values
+      const currentYear = new Date().getFullYear();
+      const defaultTitle = data.titleVi || data.titleEn || filenameInfo.name || 'Untitled Movie';
+      const slug = data.slug || this.generateSlug(defaultTitle);
+      
       // Check if slug already exists
       const existingVideo = await prisma.video.findUnique({
-        where: { slug: data.slug },
+        where: { slug },
       });
 
       if (existingVideo) {
         throw new AppError('Movie with this slug already exists', 400);
       }
 
-      // Create video record
+      // Smart defaults based on video info
+      const movieData = {
+        slug,
+        titleVi: data.titleVi || defaultTitle,
+        titleEn: data.titleEn || defaultTitle,
+        descriptionVi: data.descriptionVi || `Phim ${defaultTitle} - Được upload vào ${new Date().toLocaleDateString('vi-VN')}`,
+        descriptionEn: data.descriptionEn || `${defaultTitle} - Uploaded on ${new Date().toLocaleDateString('en-US')}`,
+        type: data.type || 'MOVIE',
+        year: data.year || filenameInfo.year || currentYear,
+        posterUrl: data.posterUrl,
+        backdropUrl: data.backdropUrl,
+        ageRating: this.normalizeAgeRating(data.ageRating),
+        durationMinutes: data.durationMinutes || 120, // Default 2 hours
+        isPublished: false, // Start as unpublished
+        viewsCount: 0,
+      };
+
+      // Create video record with enhanced defaults
       const video = await prisma.video.create({
-        data: {
-          slug: data.slug,
-          titleVi: data.titleVi,
-          titleEn: data.titleEn,
-          descriptionVi: data.descriptionVi,
-          descriptionEn: data.descriptionEn,
-          type: data.type,
-          year: data.year,
-          posterUrl: data.posterUrl,
-          backdropUrl: data.backdropUrl,
-          ageRating: (data.ageRating as any) || 'PG13',
-          durationMinutes: data.durationMinutes,
-          isPublished: false, // Start as unpublished
-          viewsCount: 0,
-        },
+        data: movieData,
       });
 
-      // Associate genres if provided
+      // Create movie source if rawVideoKey is provided
+      if (data.rawVideoKey) {
+        await prisma.movieSource.create({
+          data: {
+            videoId: video.id,
+            isPublished: false, // Start as unpublished
+          },
+        });
+      }
+
+      // Associate genres if provided, otherwise add default genre
       if (data.genreIds && data.genreIds.length > 0) {
         await prisma.videoGenre.createMany({
           data: data.genreIds.map(genreId => ({
             videoId: video.id,
             genreId,
           })),
+          skipDuplicates: true,
         });
       }
 
@@ -113,16 +149,51 @@ export class AdminService {
             videoId: video.id,
             castId,
             role: 'ACTOR' as any,
-            roleName: 'Actor', // Add required roleName field
+            roleName: 'Actor',
           })),
+          skipDuplicates: true,
         });
       }
 
-      logger.info(`Created movie: ${video.titleEn} (${video.id})`);
+      logger.info(`Created movie: ${video.titleVi} (${video.id}) with enhanced defaults`);
+
+      // Log audit
+      if (userId) {
+        await auditLogger.logSuccess({
+          userId,
+          action: AUDIT_ACTIONS.CREATE_VIDEO,
+          resource: AUDIT_RESOURCES.VIDEO,
+          resourceId: video.id,
+          details: {
+            title: video.titleVi,
+            type: video.type,
+            slug: video.slug,
+            hasRawVideo: !!data.rawVideoKey,
+          },
+        });
+      }
 
       return await this.getMovieById(video.id);
     } catch (error: any) {
       logger.error('Failed to create movie:', error);
+      
+      // Log failed audit
+      if (userId) {
+        await auditLogger.logFailure({
+          userId,
+          action: AUDIT_ACTIONS.CREATE_VIDEO,
+          resource: AUDIT_RESOURCES.VIDEO,
+          details: {
+            error: error.message,
+            inputData: {
+              titleVi: data.titleVi,
+              titleEn: data.titleEn,
+              type: data.type,
+            },
+          },
+        });
+      }
+      
       if (error instanceof AppError) throw error;
       throw new AppError('Failed to create movie', 500);
     }
@@ -130,6 +201,8 @@ export class AdminService {
 
   async updateMovie(id: string, data: UpdateMovieData) {
     try {
+      logger.info(`Updating movie ${id} with data:`, data);
+      
       const video = await prisma.video.findUnique({
         where: { id },
       });
@@ -155,8 +228,12 @@ export class AdminService {
         },
       });
 
+      logger.info(`Video updated successfully: ${updatedVideo.id}`);
+
       // Update genres if provided
       if (data.genreIds !== undefined) {
+        logger.info(`Updating genres for video ${id}:`, data.genreIds);
+        
         // Remove existing genres
         await prisma.videoGenre.deleteMany({
           where: { videoId: id },
@@ -171,10 +248,14 @@ export class AdminService {
             })),
           });
         }
+        
+        logger.info(`Genres updated successfully for video ${id}`);
       }
 
       // Update cast if provided
       if (data.castIds !== undefined) {
+        logger.info(`Updating cast for video ${id}:`, data.castIds);
+        
         // Remove existing cast
         await prisma.videoCast.deleteMany({
           where: { videoId: id },
@@ -191,13 +272,20 @@ export class AdminService {
             })),
           });
         }
+        
+        logger.info(`Cast updated successfully for video ${id}`);
       }
 
-      logger.info(`Updated movie: ${updatedVideo.titleEn} (${id})`);
+      logger.info(`Movie update completed: ${updatedVideo.titleEn} (${id})`);
 
       return await this.getMovieById(id);
     } catch (error: any) {
-      logger.error('Failed to update movie:', error);
+      logger.error('Failed to update movie:', {
+        movieId: id,
+        error: error.message,
+        stack: error.stack,
+        data
+      });
       if (error instanceof AppError) throw error;
       throw new AppError('Failed to update movie', 500);
     }
@@ -214,17 +302,30 @@ export class AdminService {
       }
 
       // Add transcoding job to queue
-      const jobId = await queueService.addTranscodeJob({
-        videoId,
-        inputPath: rawVideoKey,
-        outputPath: `videos/${videoId}/hls`,
+      const job = await queueService.addTranscodeJob({
+        movieId: videoId,
+        rawVideoKey,
+        bucket: process.env.S3_BUCKET || 'chauphim-videos',
         qualities: qualities || ['480p', '720p', '1080p'],
       });
 
-      logger.info(`Started transcoding for video ${videoId}, job ID: ${jobId}`);
+      // Save job to database
+      await prisma.transcodeJob.create({
+        data: {
+          videoId,
+          jobId: job.id || '',
+          status: 'QUEUED',
+          progress: 0,
+          qualities: qualities || ['480p', '720p', '1080p'],
+          inputPath: rawVideoKey,
+          outputPath: `videos/${videoId}/hls`,
+        },
+      });
+
+      logger.info(`Started transcoding for video ${videoId}, job ID: ${job.id}`);
 
       return {
-        jobId,
+        jobId: job.id,
         status: 'queued',
         message: 'Transcoding job started successfully',
       };
@@ -237,36 +338,183 @@ export class AdminService {
 
   async getTranscodingStatus(videoId: string) {
     try {
-      // This would typically require storing jobId in database
-      // For now, we'll return a mock status
-      // In production, you'd store the jobId when starting transcoding
-      
       logger.info(`Checking transcoding status for video ${videoId}`);
 
-      // Check if movie source already exists (transcoding completed)
-      const movieSource = await prisma.movieSource.findUnique({
+      // Find the most recent transcode job for this video
+      const transcodeJob = await prisma.transcodeJob.findFirst({
         where: { videoId },
+        orderBy: { createdAt: 'desc' },
       });
 
-      if (movieSource && movieSource.isPublished) {
+      if (!transcodeJob) {
+        throw new AppError('No transcoding job found for this video', 404);
+      }
+
+      // Get real-time status from queue
+      const queueStatus = await queueService.getJobStatus(transcodeJob.jobId);
+      
+      if (queueStatus) {
+        // Update database with current queue status
+        const statusMap: { [key: string]: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' } = {
+          'waiting': 'QUEUED',
+          'active': 'PROCESSING', 
+          'completed': 'COMPLETED',
+          'failed': 'FAILED',
+          'delayed': 'QUEUED',
+        };
+
+        const dbStatus = statusMap[queueStatus.status] || 'QUEUED';
+        const progress = (typeof queueStatus.progress === 'number') ? queueStatus.progress : transcodeJob.progress;
+
+        // Update job in database
+        await prisma.transcodeJob.update({
+          where: { id: transcodeJob.id },
+          data: {
+            status: dbStatus,
+            progress: progress,
+            ...(dbStatus === 'PROCESSING' && !transcodeJob.startedAt && { startedAt: new Date() }),
+            ...(dbStatus === 'COMPLETED' && { completedAt: new Date(), progress: 100 }),
+            ...(dbStatus === 'FAILED' && { 
+              completedAt: new Date(), 
+              errorMessage: queueStatus.failedReason || 'Unknown error'
+            }),
+          },
+        });
+
         return {
-          status: 'completed',
-          progress: 100,
-          message: 'Transcoding completed successfully',
-          hlsManifestKey: movieSource.hlsManifestKey,
+          status: dbStatus.toLowerCase(),
+          progress: progress,
+          message: this.getStatusMessage(dbStatus, progress),
+          jobId: transcodeJob.jobId,
+          startedAt: transcodeJob.startedAt,
+          completedAt: transcodeJob.completedAt,
+          errorMessage: transcodeJob.errorMessage,
+          ...(dbStatus === 'COMPLETED' && {
+            hlsManifestKey: `${transcodeJob.outputPath}/master.m3u8`
+          }),
         };
       }
 
-      // If no movie source, check if transcoding is in progress
-      // In a real implementation, you'd query the job queue
+      // Fallback to database status if queue job not found
       return {
-        status: 'processing',
-        progress: 45,
-        message: 'Transcoding in progress...',
+        status: transcodeJob.status.toLowerCase(),
+        progress: transcodeJob.progress,
+        message: this.getStatusMessage(transcodeJob.status, transcodeJob.progress),
+        jobId: transcodeJob.jobId,
+        startedAt: transcodeJob.startedAt,
+        completedAt: transcodeJob.completedAt,
+        errorMessage: transcodeJob.errorMessage,
+        ...(transcodeJob.status === 'COMPLETED' && {
+          hlsManifestKey: `${transcodeJob.outputPath}/master.m3u8`
+        }),
       };
     } catch (error: any) {
       logger.error('Failed to get transcoding status:', error);
+      if (error instanceof AppError) throw error;
       throw new AppError('Failed to get transcoding status', 500);
+    }
+  }
+
+  async getTranscodeJobs(page: number = 1, limit: number = 20, status?: string) {
+    try {
+      const skip = (page - 1) * limit;
+      
+      const where = status ? { status: status as any } : {};
+      
+      const [jobs, total] = await Promise.all([
+        prisma.transcodeJob.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            video: {
+              select: {
+                titleVi: true,
+                titleEn: true,
+                slug: true,
+                posterUrl: true,
+              },
+            },
+          },
+        }),
+        prisma.transcodeJob.count({ where }),
+      ]);
+
+      // Update status from queue for active jobs
+      const updatedJobs = await Promise.all(
+        jobs.map(async (job) => {
+          if (job.status === 'QUEUED' || job.status === 'PROCESSING') {
+            try {
+              const queueStatus = await queueService.getJobStatus(job.jobId);
+              if (queueStatus) {
+                const statusMap: { [key: string]: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' } = {
+                  'waiting': 'QUEUED',
+                  'active': 'PROCESSING', 
+                  'completed': 'COMPLETED',
+                  'failed': 'FAILED',
+                  'delayed': 'QUEUED',
+                };
+
+                const dbStatus = statusMap[queueStatus.status] || job.status;
+                const progress = (typeof queueStatus.progress === 'number') ? queueStatus.progress : job.progress;
+
+                // Update in database
+                await prisma.transcodeJob.update({
+                  where: { id: job.id },
+                  data: {
+                    status: dbStatus,
+                    progress: progress,
+                    ...(dbStatus === 'PROCESSING' && !job.startedAt && { startedAt: new Date() }),
+                    ...(dbStatus === 'COMPLETED' && { completedAt: new Date(), progress: 100 }),
+                    ...(dbStatus === 'FAILED' && { 
+                      completedAt: new Date(), 
+                      errorMessage: queueStatus.failedReason || 'Unknown error'
+                    }),
+                  },
+                });
+
+                return { ...job, status: dbStatus, progress };
+              }
+            } catch (error) {
+              logger.error(`Failed to get queue status for job ${job.jobId}:`, error);
+            }
+          }
+          return job;
+        })
+      );
+
+      return {
+        data: updatedJobs,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error: any) {
+      logger.error('Failed to get transcode jobs:', error);
+      throw new AppError('Failed to get transcode jobs', 500);
+    }
+  }
+
+  private getStatusMessage(status: string, progress: number): string {
+    switch (status) {
+      case 'QUEUED':
+      case 'queued':
+        return 'Transcoding job is queued and waiting to start';
+      case 'PROCESSING':
+      case 'processing':
+        return `Transcoding in progress: ${progress}% completed`;
+      case 'COMPLETED':
+      case 'completed':
+        return 'Transcoding completed successfully';
+      case 'FAILED':
+      case 'failed':
+        return 'Transcoding failed';
+      default:
+        return 'Unknown status';
     }
   }
 
@@ -344,6 +592,90 @@ export class AdminService {
       logger.error('Failed to generate subtitle upload URL:', error);
       if (error instanceof AppError) throw error;
       throw new AppError('Failed to generate subtitle upload URL', 500);
+    }
+  }
+
+  async getImageUploadUrl(videoId: string, filename: string, contentType: string, imageType: 'poster' | 'backdrop') {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      // Generate image key based on type
+      const imageKey = storageService.generateKey(`videos/${videoId}/images/${imageType}`, filename);
+      
+      // Generate presigned upload URL
+      const uploadUrl = await storageService.getUploadPresignedUrl(
+        imageKey,
+        contentType,
+        3600
+      );
+
+      logger.info(`Generated ${imageType} upload URL for video ${videoId}, filename: ${filename}`);
+
+      return {
+        uploadUrl,
+        imageKey,
+        imageType,
+        filename,
+        contentType,
+        expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+      };
+    } catch (error: any) {
+      logger.error('Failed to generate image upload URL:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to generate image upload URL', 500);
+    }
+  }
+
+  async updateMovieImage(videoId: string, imageType: 'poster' | 'backdrop', imageKey: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      // Generate public URL for the uploaded image
+      const imageUrl = storageService.getPublicUrl(imageKey);
+      
+      logger.info(`Generated public URL for ${imageType}:`, {
+        imageKey,
+        imageUrl,
+        storageEndpoint: process.env.STORAGE_ENDPOINT,
+        bucket: process.env.STORAGE_BUCKET
+      });
+
+      // Update the appropriate field
+      const updateData: any = {};
+      if (imageType === 'poster') {
+        updateData.posterUrl = imageUrl;
+      } else {
+        updateData.backdropUrl = imageUrl;
+      }
+
+      const updatedVideo = await prisma.video.update({
+        where: { id: videoId },
+        data: updateData,
+      });
+
+      logger.info(`Updated ${imageType} for video ${videoId}: ${imageUrl}`);
+
+      return {
+        message: `${imageType} updated successfully`,
+        imageUrl,
+        [imageType + 'Url']: imageUrl,
+      };
+    } catch (error: any) {
+      logger.error('Failed to update movie image:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to update movie image', 500);
     }
   }
 
@@ -509,7 +841,7 @@ export class AdminService {
     }
   }
 
-  private async getMovieById(id: string) {
+  async getMovieById(id: string) {
     return await prisma.video.findUnique({
       where: { id },
       include: {
@@ -567,5 +899,45 @@ export class AdminService {
     };
 
     return labels[language] || language.toUpperCase();
+  }
+
+  private normalizeAgeRating(ageRating?: string): AgeRating {
+    if (!ageRating) return 'PG13';
+    
+    const normalized = ageRating.toUpperCase().replace(/[-\s]/g, '');
+    
+    // Map various formats to Prisma enum values
+    const mapping: Record<string, AgeRating> = {
+      'G': 'G',
+      'GENERAL': 'G',
+      'PG': 'PG',
+      'PARENTALGUIDANCE': 'PG',
+      'PG13': 'PG13',
+      'PARENTALGUIDANCE13': 'PG13',
+      'R': 'R',
+      'RESTRICTED': 'R',
+      'NC17': 'NC17',
+      'NOCHILDRENUNDER17': 'NC17',
+    };
+
+    return mapping[normalized] || 'PG13'; // Default to PG13 if unknown
+  }
+
+  private generateSlug(title: string): string {
+    if (!title) {
+      return `movie-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    }
+
+    return title
+      .toLowerCase()
+      .normalize('NFD') // Normalize Vietnamese characters
+      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+      .replace(/[đĐ]/g, 'd') // Handle Vietnamese đ
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .trim() // Remove leading/trailing spaces
+      .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+      || `movie-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   }
 }

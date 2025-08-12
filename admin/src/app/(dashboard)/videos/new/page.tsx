@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { 
   ArrowLeft,
   Save,
@@ -27,56 +28,99 @@ import {
   Users,
   Star,
   Settings,
-  Tv
+  Tv,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  FileVideo,
+  Play
 } from 'lucide-react'
+import { getAuthenticatedApiClient } from '@/lib/auth-utils'
+import { API_BASE_URL } from '@/lib/config'
+import { 
+  useGenerateMovieUploadUrl, 
+  useCreateMovie, 
+  useStartTranscoding,
+  useTranscodingStatus,
+  usePublishMovie 
+} from '@/hooks/api'
 
 interface VideoForm {
-  title_vi: string
-  title_en: string
-  description_vi: string
-  description_en: string
+  slug: string
+  titleVi: string
+  titleEn: string
+  descriptionVi: string
+  descriptionEn: string
   type: 'MOVIE' | 'SERIES'
   year: number
-  age_rating: string
-  duration_minutes: number
-  release_date: string
-  poster_url: string
-  backdrop_url: string
-  trailer_url: string
-  is_published: boolean
-  is_featured: boolean
-  genres: string[]
-  cast_members: string[]
-  tags: string[]
+  ageRating: string
+  durationMinutes: number
+  posterUrl: string
+  backdropUrl: string
+  genreIds: string[]
+  castIds: string[]
+  rawVideoKey: string
+  rawVideoUrl: string
+}
+
+interface UploadState {
+  isUploading: boolean
+  progress: number
+  step: 'idle' | 'uploading-video' | 'creating-movie' | 'transcoding' | 'completed'
+  error: string | null
+}
+
+interface TranscodingStatus {
+  status: 'queued' | 'processing' | 'completed' | 'failed'
+  progress: number
+  message: string
+  hlsManifestKey?: string
 }
 
 export default function NewVideoPage() {
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [currentTab, setCurrentTab] = useState('basic')
+  const videoFileRef = useRef<HTMLInputElement>(null)
+  const [movieId, setMovieId] = useState<string | null>(null)
+  const [uploadState, setUploadState] = useState<UploadState>({
+    isUploading: false,
+    progress: 0,
+    step: 'idle',
+    error: null
+  })
+  const [currentTab, setCurrentTab] = useState('video')
+
+  // Mutations
+  const generateUploadUrlMutation = useGenerateMovieUploadUrl()
+  const createMovieMutation = useCreateMovie()
+  const startTranscodingMutation = useStartTranscoding()
+  const publishMovieMutation = usePublishMovie()
+
+  // Query for transcoding status
+  const transcodingQuery = useTranscodingStatus(
+    movieId || '', 
+    !!movieId && uploadState.step === 'transcoding'
+  )
+
+  const transcodingStatus = transcodingQuery.data?.data
 
   const [formData, setFormData] = useState<VideoForm>({
-    title_vi: '',
-    title_en: '',
-    description_vi: '',
-    description_en: '',
+    slug: '',
+    titleVi: '',
+    titleEn: '',
+    descriptionVi: '',
+    descriptionEn: '',
     type: 'MOVIE',
     year: new Date().getFullYear(),
-    age_rating: 'PG-13',
-    duration_minutes: 0,
-    release_date: '',
-    poster_url: '',
-    backdrop_url: '',
-    trailer_url: '',
-    is_published: false,
-    is_featured: false,
-    genres: [],
-    cast_members: [],
-    tags: []
+    ageRating: 'PG-13',
+    durationMinutes: 0,
+    posterUrl: '',
+    backdropUrl: '',
+    genreIds: [],
+    castIds: [],
+    rawVideoKey: '',
+    rawVideoUrl: ''
   })
 
-  const [newTag, setNewTag] = useState('')
   const [newGenre, setNewGenre] = useState('')
   const [newCastMember, setNewCastMember] = useState('')
 
@@ -85,14 +129,46 @@ export default function NewVideoPage() {
   const availableCastMembers = ['Brad Pitt', 'Angelina Jolie', 'Leonardo DiCaprio', 'Scarlett Johansson']
   const ageRatings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-MA']
 
+  // Effect to update upload status based on transcoding progress
+  useEffect(() => {
+    if (transcodingStatus) {
+      setUploadState(prev => ({
+        ...prev,
+        progress: transcodingStatus.progress
+      }))
+
+      if (transcodingStatus.status === 'completed') {
+        setUploadState(prev => ({ ...prev, step: 'completed', isUploading: false }))
+      } else if (transcodingStatus.status === 'failed') {
+        setUploadState(prev => ({ 
+          ...prev, 
+          isUploading: false, 
+          step: 'idle', 
+          error: 'Transcoding failed: ' + transcodingStatus.message 
+        }))
+      }
+    }
+  }, [transcodingStatus])
+
   const handleInputChange = (field: keyof VideoForm, value: any) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }))
+
+    // Auto-generate slug from titleVi
+    if (field === 'titleVi' && value) {
+      const slug = value
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim()
+      setFormData(prev => ({ ...prev, slug }))
+    }
   }
 
-  const addItem = (field: 'genres' | 'cast_members' | 'tags', value: string) => {
+  const addItem = (field: 'genreIds' | 'castIds', value: string) => {
     if (value.trim() && !formData[field].includes(value.trim())) {
       setFormData(prev => ({
         ...prev,
@@ -101,58 +177,184 @@ export default function NewVideoPage() {
     }
   }
 
-  const removeItem = (field: 'genres' | 'cast_members' | 'tags', value: string) => {
+  const removeItem = (field: 'genreIds' | 'castIds', value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: prev[field].filter(item => item !== value)
     }))
   }
 
-  const handleFileUpload = async (type: 'poster' | 'backdrop' | 'trailer', file: File) => {
-    setIsLoading(true)
-    setUploadProgress(0)
-    
-    // Simulate upload progress
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          setIsLoading(false)
-          return 100
-        }
-        return prev + 10
-      })
-    }, 200)
-
-    // Mock upload URL
-    setTimeout(() => {
-      const mockUrl = `/uploads/${type}/${file.name}`
-      handleInputChange(`${type}_url` as keyof VideoForm, mockUrl)
-      clearInterval(interval)
-      setIsLoading(false)
-      setUploadProgress(0)
-    }, 2000)
-  }
-
-  const handleSubmit = async () => {
-    setIsLoading(true)
-    
+  // Step 1: Generate upload URL and upload video file
+  const handleVideoUpload = async (file: File) => {
     try {
-      // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      setUploadState(prev => ({ ...prev, isUploading: true, step: 'uploading-video', error: null, progress: 0 }))
+
+      // Generate upload URL using mutation
+      const uploadResponse = await generateUploadUrlMutation.mutateAsync({
+        filename: file.name,
+        contentType: file.type
+      })
+
+      const { uploadUrl, videoKey } = uploadResponse.data
+
+      // Upload file with progress tracking
+      const xhr = new XMLHttpRequest()
       
-      console.log('Video data:', formData)
-      
-      // Redirect to videos list
-      router.push('/videos')
+      return new Promise((resolve, reject) => {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const progress = Math.round((e.loaded / e.total) * 100)
+            setUploadState(prev => ({ ...prev, progress }))
+          }
+        })
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            setFormData(prev => ({ ...prev, rawVideoKey: videoKey, rawVideoUrl: uploadUrl }))
+            setUploadState(prev => ({ ...prev, step: 'creating-movie', progress: 100 }))
+            
+            // Auto-fill form with filename if no title provided
+            if (!formData.titleVi && !formData.titleEn && videoKey) {
+              const filename = videoKey.split('/').pop()?.split('.')[0] || ''
+              if (filename) {
+                const cleanTitle = filename.replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                setFormData(prev => ({ 
+                  ...prev, 
+                  titleVi: cleanTitle,
+                  titleEn: cleanTitle 
+                }))
+              }
+            }
+            
+            // Auto switch to basic info tab after upload
+            setTimeout(() => {
+              setCurrentTab('basic')
+            }, 1000)
+            
+            resolve(videoKey)
+          } else {
+            reject(new Error('Upload failed'))
+          }
+        })
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Upload error'))
+        })
+
+        xhr.open('PUT', uploadUrl)
+        xhr.setRequestHeader('Content-Type', file.type)
+        xhr.send(file)
+      })
     } catch (error) {
-      console.error('Error creating video:', error)
-    } finally {
-      setIsLoading(false)
+      setUploadState(prev => ({ 
+        ...prev, 
+        isUploading: false, 
+        step: 'idle', 
+        error: error instanceof Error ? error.message : 'Upload failed' 
+      }))
+      throw error
     }
   }
 
-  const isFormValid = formData.title_vi.trim() && formData.type
+  // Step 2: Create movie metadata
+  const handleCreateMovie = async () => {
+    try {
+      // Prepare data with smart defaults
+      const movieData = {
+        slug: formData.slug || undefined, // Let server generate if empty
+        titleVi: formData.titleVi || undefined, // Let server generate from filename
+        titleEn: formData.titleEn || undefined,
+        descriptionVi: formData.descriptionVi || undefined, // Server will generate default
+        descriptionEn: formData.descriptionEn || undefined,
+        type: formData.type,
+        year: formData.year || undefined, // Server may extract from filename
+        posterUrl: formData.posterUrl || undefined,
+        backdropUrl: formData.backdropUrl || undefined,
+        ageRating: formData.ageRating || 'PG13',
+        durationMinutes: formData.durationMinutes || undefined, // Server will set default
+        genreIds: formData.genreIds.length > 0 ? formData.genreIds : undefined,
+        castIds: formData.castIds.length > 0 ? formData.castIds : undefined,
+        rawVideoKey: formData.rawVideoKey
+      }
+
+      const response = await createMovieMutation.mutateAsync(movieData)
+      const movieId = response.data.id
+      setMovieId(movieId)
+      setUploadState(prev => ({ ...prev, step: 'transcoding' }))
+      
+      return movieId
+    } catch (error) {
+      setUploadState(prev => ({ 
+        ...prev, 
+        isUploading: false, 
+        step: 'idle', 
+        error: error instanceof Error ? error.message : 'Failed to create movie' 
+      }))
+      throw error
+    }
+  }
+
+  // Step 3: Start transcoding
+  const handleStartTranscoding = async (movieId: string) => {
+    try {
+      await startTranscodingMutation.mutateAsync({
+        movieId,
+        rawVideoKey: formData.rawVideoKey,
+        qualities: ['480p', '720p', '1080p']
+      })
+
+      // Transcoding status will be polled automatically by the query
+    } catch (error) {
+      setUploadState(prev => ({ 
+        ...prev, 
+        isUploading: false, 
+        step: 'idle', 
+        error: error instanceof Error ? error.message : 'Failed to start transcoding' 
+      }))
+      throw error
+    }
+  }
+
+  // Complete upload process
+  const handleCompleteUpload = async (file: File) => {
+    try {
+      // Step 1: Upload video
+      await handleVideoUpload(file)
+      
+      // Step 2: Create movie
+      const movieId = await handleCreateMovie()
+      
+      // Step 3: Start transcoding
+      await handleStartTranscoding(movieId)
+      
+    } catch (error) {
+      console.error('Upload process failed:', error)
+    }
+  }
+
+  // Publish movie
+  const handlePublish = async () => {
+    if (!movieId) return
+
+    try {
+      await publishMovieMutation.mutateAsync({ movieId, isPublished: true })
+      
+      // Redirect to movie detail or list
+      router.push(`/videos`)
+    } catch (error) {
+      console.error('Failed to publish movie:', error)
+    }
+  }
+
+  const handleImageUpload = async (type: 'poster' | 'backdrop', file: File) => {
+    // Mock upload for images
+    const mockUrl = `${API_BASE_URL}/uploads/${type}/${file.name}`
+    handleInputChange(`${type}Url` as keyof VideoForm, mockUrl)
+  }
+
+  const isFormValid = formData.rawVideoKey || (formData.titleVi.trim() && formData.descriptionVi.trim())
+  const isVideoUploaded = uploadState.step === 'completed'
+  const canPublish = isVideoUploaded && transcodingStatus?.status === 'completed'
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -165,27 +367,101 @@ export default function NewVideoPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Tạo video mới</h1>
             <p className="text-muted-foreground">
-              Thêm video mới vào hệ thống
+              Upload và tạo video mới theo quy trình hoàn chỉnh
             </p>
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" disabled={isLoading}>
-            <Eye className="mr-2 h-4 w-4" />
-            Xem trước
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={!isFormValid || isLoading}
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isLoading ? 'Đang lưu...' : 'Lưu video'}
-          </Button>
+          {formData.rawVideoKey && uploadState.step === 'idle' && (
+            <Button 
+              onClick={async () => {
+                try {
+                  const movieId = await handleCreateMovie()
+                  await handleStartTranscoding(movieId)
+                } catch (error) {
+                  console.error('Failed to process video:', error)
+                }
+              }}
+              variant="outline"
+              disabled={uploadState.isUploading}
+            >
+              <Film className="mr-2 h-4 w-4" />
+              Xử lý Video
+            </Button>
+          )}
+          {canPublish && (
+            <Button onClick={handlePublish} className="bg-green-600 hover:bg-green-700">
+              <Eye className="mr-2 h-4 w-4" />
+              Xuất bản
+            </Button>
+          )}
         </div>
       </div>
 
+      {/* Upload Progress */}
+      {uploadState.isUploading && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                {uploadState.step === 'uploading-video' && <Upload className="h-5 w-5 text-blue-500" />}
+                {uploadState.step === 'creating-movie' && <Film className="h-5 w-5 text-orange-500" />}
+                {uploadState.step === 'transcoding' && <Loader2 className="h-5 w-5 text-purple-500 animate-spin" />}
+                {uploadState.step === 'completed' && <CheckCircle className="h-5 w-5 text-green-500" />}
+                
+                <div className="flex-1">
+                  <p className="font-medium">
+                    {uploadState.step === 'uploading-video' && 'Đang upload video...'}
+                    {uploadState.step === 'creating-movie' && 'Đang tạo thông tin phim...'}
+                    {uploadState.step === 'transcoding' && 'Đang xử lý video...'}
+                    {uploadState.step === 'completed' && 'Hoàn thành!'}
+                  </p>
+                  {transcodingStatus && (
+                    <p className="text-sm text-muted-foreground">
+                      {transcodingStatus.message} - {transcodingStatus.progress}%
+                    </p>
+                  )}
+                </div>
+                <span className="text-sm font-medium">{uploadState.progress}%</span>
+              </div>
+              
+              <div className="w-full bg-muted rounded-full h-2">
+                <div 
+                  className="bg-primary h-2 rounded-full transition-all duration-300" 
+                  style={{ width: `${uploadState.progress}%` }}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error Alert */}
+      {uploadState.error && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-800">
+            {uploadState.error}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Success Alert */}
+      {uploadState.step === 'completed' && (
+        <Alert className="border-green-200 bg-green-50">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">
+            Video đã được upload và xử lý thành công! Bạn có thể xuất bản ngay bây giờ.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="video">
+            <FileVideo className="mr-2 h-4 w-4" />
+            Upload Video
+          </TabsTrigger>
           <TabsTrigger value="basic">
             <Film className="mr-2 h-4 w-4" />
             Thông tin cơ bản
@@ -198,12 +474,105 @@ export default function NewVideoPage() {
             <Tag className="mr-2 h-4 w-4" />
             Metadata
           </TabsTrigger>
-          <TabsTrigger value="settings">
-            <Settings className="mr-2 h-4 w-4" />
-            Cài đặt
-          </TabsTrigger>
         </TabsList>
 
+        {/* Video Upload Tab */}
+        <TabsContent value="video" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Upload Video File</CardTitle>
+              <CardDescription>
+                Chọn file video để upload. Hệ thống sẽ tự động xử lý và tạo các version chất lượng khác nhau.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {!formData.rawVideoKey ? (
+                <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-12">
+                  <div className="text-center">
+                    <FileVideo className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-lg font-semibold">Upload video file</h3>
+                        <p className="text-muted-foreground">
+                          Chọn file video định dạng MP4, MOV, AVI (khuyến nghị MP4)
+                        </p>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        className="relative"
+                        disabled={uploadState.isUploading}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Chọn file video
+                        <input
+                          ref={videoFileRef}
+                          type="file"
+                          accept="video/*"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) handleCompleteUpload(file)
+                          }}
+                        />
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        Hỗ trợ: MP4, MOV, AVI. Tối đa 5GB.
+                        <br />
+                        Khuyến nghị: H.264 codec, độ phân giải tối thiểu 720p
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="border rounded-lg p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
+                      {uploadState.step === 'completed' ? (
+                        <CheckCircle className="h-8 w-8 text-green-500" />
+                      ) : (
+                        <FileVideo className="h-8 w-8 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold">Video đã upload</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Key: {formData.rawVideoKey}
+                      </p>
+                      {transcodingStatus && (
+                        <div className="mt-2 space-y-1">
+                          <p className="text-sm">
+                            Trạng thái: <Badge variant={
+                              transcodingStatus.status === 'completed' ? 'default' :
+                              transcodingStatus.status === 'failed' ? 'destructive' : 'secondary'
+                            }>
+                              {transcodingStatus.status === 'completed' && 'Hoàn thành'}
+                              {transcodingStatus.status === 'processing' && 'Đang xử lý'}
+                              {transcodingStatus.status === 'queued' && 'Đang chờ'}
+                              {transcodingStatus.status === 'failed' && 'Thất bại'}
+                            </Badge>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, rawVideoKey: '', rawVideoUrl: '' }))
+                        setUploadState({ isUploading: false, progress: 0, step: 'idle', error: null })
+                        setMovieId(null)
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Basic Info Tab */}
         <TabsContent value="basic" className="space-y-6">
           <Card>
             <CardHeader>
@@ -215,42 +584,52 @@ export default function NewVideoPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="title_vi">Tiêu đề (Tiếng Việt) *</Label>
+                  <Label htmlFor="titleVi">Tiêu đề (Tiếng Việt) *</Label>
                   <Input
-                    id="title_vi"
-                    value={formData.title_vi}
-                    onChange={(e) => handleInputChange('title_vi', e.target.value)}
+                    id="titleVi"
+                    value={formData.titleVi}
+                    onChange={(e) => handleInputChange('titleVi', e.target.value)}
                     placeholder="Nhập tiêu đề tiếng Việt"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="title_en">Tiêu đề (English)</Label>
+                  <Label htmlFor="titleEn">Tiêu đề (English)</Label>
                   <Input
-                    id="title_en"
-                    value={formData.title_en}
-                    onChange={(e) => handleInputChange('title_en', e.target.value)}
+                    id="titleEn"
+                    value={formData.titleEn}
+                    onChange={(e) => handleInputChange('titleEn', e.target.value)}
                     placeholder="Enter English title"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description_vi">Mô tả (Tiếng Việt)</Label>
+                <Label htmlFor="slug">URL Slug (tự động tạo) *</Label>
+                <Input
+                  id="slug"
+                  value={formData.slug}
+                  onChange={(e) => handleInputChange('slug', e.target.value)}
+                  placeholder="avengers-endgame"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="descriptionVi">Mô tả (Tiếng Việt) *</Label>
                 <Textarea
-                  id="description_vi"
-                  value={formData.description_vi}
-                  onChange={(e) => handleInputChange('description_vi', e.target.value)}
+                  id="descriptionVi"
+                  value={formData.descriptionVi}
+                  onChange={(e) => handleInputChange('descriptionVi', e.target.value)}
                   placeholder="Nhập mô tả về video..."
                   rows={4}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description_en">Mô tả (English)</Label>
+                <Label htmlFor="descriptionEn">Mô tả (English)</Label>
                 <Textarea
-                  id="description_en"
-                  value={formData.description_en}
-                  onChange={(e) => handleInputChange('description_en', e.target.value)}
+                  id="descriptionEn"
+                  value={formData.descriptionEn}
+                  onChange={(e) => handleInputChange('descriptionEn', e.target.value)}
                   placeholder="Enter video description..."
                   rows={4}
                 />
@@ -283,11 +662,11 @@ export default function NewVideoPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="age_rating">Phân loại độ tuổi</Label>
+                  <Label htmlFor="ageRating">Phân loại độ tuổi</Label>
                   <select
-                    id="age_rating"
-                    value={formData.age_rating}
-                    onChange={(e) => handleInputChange('age_rating', e.target.value)}
+                    id="ageRating"
+                    value={formData.ageRating}
+                    onChange={(e) => handleInputChange('ageRating', e.target.value)}
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
                     {ageRatings.map(rating => (
@@ -297,26 +676,16 @@ export default function NewVideoPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="duration">Thời lượng (phút)</Label>
                   <Input
                     id="duration"
                     type="number"
-                    value={formData.duration_minutes}
-                    onChange={(e) => handleInputChange('duration_minutes', parseInt(e.target.value))}
+                    value={formData.durationMinutes}
+                    onChange={(e) => handleInputChange('durationMinutes', parseInt(e.target.value))}
                     placeholder="120"
                     min="1"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="release_date">Ngày phát hành</Label>
-                  <Input
-                    id="release_date"
-                    type="date"
-                    value={formData.release_date}
-                    onChange={(e) => handleInputChange('release_date', e.target.value)}
                   />
                 </div>
               </div>
@@ -324,12 +693,13 @@ export default function NewVideoPage() {
           </Card>
         </TabsContent>
 
+        {/* Media Tab */}
         <TabsContent value="media" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Media & Assets</CardTitle>
               <CardDescription>
-                Upload poster, backdrop và trailer cho video
+                Upload poster và backdrop cho video
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -337,21 +707,21 @@ export default function NewVideoPage() {
               <div className="space-y-2">
                 <Label>Poster</Label>
                 <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
-                  {formData.poster_url ? (
+                  {formData.posterUrl ? (
                     <div className="flex items-center gap-4">
                       <img 
-                        src={formData.poster_url} 
+                        src={formData.posterUrl} 
                         alt="Poster" 
                         className="w-20 h-28 object-cover rounded"
                       />
                       <div className="flex-1">
                         <p className="text-sm font-medium">Poster đã upload</p>
-                        <p className="text-xs text-muted-foreground">{formData.poster_url}</p>
+                        <p className="text-xs text-muted-foreground">{formData.posterUrl}</p>
                       </div>
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => handleInputChange('poster_url', '')}
+                        onClick={() => handleInputChange('posterUrl', '')}
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -369,7 +739,7 @@ export default function NewVideoPage() {
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             onChange={(e) => {
                               const file = e.target.files?.[0]
-                              if (file) handleFileUpload('poster', file)
+                              if (file) handleImageUpload('poster', file)
                             }}
                           />
                         </Button>
@@ -386,21 +756,21 @@ export default function NewVideoPage() {
               <div className="space-y-2">
                 <Label>Backdrop</Label>
                 <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
-                  {formData.backdrop_url ? (
+                  {formData.backdropUrl ? (
                     <div className="flex items-center gap-4">
                       <img 
-                        src={formData.backdrop_url} 
+                        src={formData.backdropUrl} 
                         alt="Backdrop" 
                         className="w-32 h-18 object-cover rounded"
                       />
                       <div className="flex-1">
                         <p className="text-sm font-medium">Backdrop đã upload</p>
-                        <p className="text-xs text-muted-foreground">{formData.backdrop_url}</p>
+                        <p className="text-xs text-muted-foreground">{formData.backdropUrl}</p>
                       </div>
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => handleInputChange('backdrop_url', '')}
+                        onClick={() => handleInputChange('backdropUrl', '')}
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -418,7 +788,7 @@ export default function NewVideoPage() {
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             onChange={(e) => {
                               const file = e.target.files?.[0]
-                              if (file) handleFileUpload('backdrop', file)
+                              if (file) handleImageUpload('backdrop', file)
                             }}
                           />
                         </Button>
@@ -430,42 +800,17 @@ export default function NewVideoPage() {
                   )}
                 </div>
               </div>
-
-              {/* Trailer URL */}
-              <div className="space-y-2">
-                <Label htmlFor="trailer_url">Trailer URL</Label>
-                <Input
-                  id="trailer_url"
-                  value={formData.trailer_url}
-                  onChange={(e) => handleInputChange('trailer_url', e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=..."
-                />
-              </div>
-
-              {isLoading && uploadProgress > 0 && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Đang upload...</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-2">
-                    <div 
-                      className="bg-primary h-2 rounded-full transition-all duration-300" 
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* Metadata Tab */}
         <TabsContent value="metadata" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Metadata</CardTitle>
               <CardDescription>
-                Thêm thể loại, diễn viên và tags cho video
+                Thêm thể loại và diễn viên cho video
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -486,7 +831,7 @@ export default function NewVideoPage() {
                   <Button 
                     onClick={() => {
                       if (newGenre) {
-                        addItem('genres', newGenre)
+                        addItem('genreIds', newGenre)
                         setNewGenre('')
                       }
                     }}
@@ -496,12 +841,12 @@ export default function NewVideoPage() {
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {formData.genres.map(genre => (
-                    <Badge key={genre} variant="secondary" className="flex items-center gap-1">
-                      {genre}
+                  {formData.genreIds.map(genreId => (
+                    <Badge key={genreId} variant="secondary" className="flex items-center gap-1">
+                      {genreId}
                       <X 
                         className="h-3 w-3 cursor-pointer" 
-                        onClick={() => removeItem('genres', genre)}
+                        onClick={() => removeItem('genreIds', genreId)}
                       />
                     </Badge>
                   ))}
@@ -525,7 +870,7 @@ export default function NewVideoPage() {
                   <Button 
                     onClick={() => {
                       if (newCastMember) {
-                        addItem('cast_members', newCastMember)
+                        addItem('castIds', newCastMember)
                         setNewCastMember('')
                       }
                     }}
@@ -535,110 +880,27 @@ export default function NewVideoPage() {
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {formData.cast_members.map(cast => (
-                    <Badge key={cast} variant="secondary" className="flex items-center gap-1">
-                      {cast}
+                  {formData.castIds.map(castId => (
+                    <Badge key={castId} variant="secondary" className="flex items-center gap-1">
+                      {castId}
                       <X 
                         className="h-3 w-3 cursor-pointer" 
-                        onClick={() => removeItem('cast_members', cast)}
+                        onClick={() => removeItem('castIds', castId)}
                       />
                     </Badge>
                   ))}
                 </div>
               </div>
 
-              {/* Tags */}
-              <div className="space-y-2">
-                <Label>Tags</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    placeholder="Nhập tag..."
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        if (newTag.trim()) {
-                          addItem('tags', newTag)
-                          setNewTag('')
-                        }
-                      }
-                    }}
-                  />
-                  <Button 
-                    onClick={() => {
-                      if (newTag.trim()) {
-                        addItem('tags', newTag)
-                        setNewTag('')
-                      }
-                    }}
-                    disabled={!newTag.trim()}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {formData.tags.map(tag => (
-                    <Badge key={tag} variant="outline" className="flex items-center gap-1">
-                      {tag}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => removeItem('tags', tag)}
-                      />
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="settings" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cài đặt xuất bản</CardTitle>
-              <CardDescription>
-                Cấu hình trạng thái và quyền truy cập của video
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Xuất bản</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Video sẽ hiển thị công khai cho người dùng
-                  </p>
-                </div>
-                <Switch
-                  checked={formData.is_published}
-                  onCheckedChange={(checked) => handleInputChange('is_published', checked)}
-                />
-              </div>
-
+              {/* Summary */}
               <Separator />
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Nổi bật</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Video sẽ được hiển thị trong mục nổi bật
-                  </p>
-                </div>
-                <Switch
-                  checked={formData.is_featured}
-                  onCheckedChange={(checked) => handleInputChange('is_featured', checked)}
-                />
-              </div>
-
-              <Separator />
-
               <div className="space-y-4">
                 <Label>Tóm tắt thông tin</Label>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Tiêu đề:</span>
-                      <span>{formData.title_vi || 'Chưa nhập'}</span>
+                      <span>{formData.titleVi || 'Chưa nhập'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Loại:</span>
@@ -650,25 +912,25 @@ export default function NewVideoPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Phân loại:</span>
-                      <span>{formData.age_rating}</span>
+                      <span>{formData.ageRating}</span>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Thời lượng:</span>
-                      <span>{formData.duration_minutes > 0 ? `${formData.duration_minutes} phút` : 'Chưa nhập'}</span>
+                      <span>{formData.durationMinutes > 0 ? `${formData.durationMinutes} phút` : 'Chưa nhập'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Thể loại:</span>
-                      <span>{formData.genres.length} thể loại</span>
+                      <span>{formData.genreIds.length} thể loại</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Diễn viên:</span>
-                      <span>{formData.cast_members.length} người</span>
+                      <span>{formData.castIds.length} người</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tags:</span>
-                      <span>{formData.tags.length} tags</span>
+                      <span className="text-muted-foreground">Video:</span>
+                      <span>{formData.rawVideoKey ? 'Đã upload' : 'Chưa upload'}</span>
                     </div>
                   </div>
                 </div>

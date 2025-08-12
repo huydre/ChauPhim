@@ -9,8 +9,10 @@ import type {
   DashboardStats,
   Comment,
   Rating,
-  Job,
+  TranscodeJob,
   AuditLog,
+  AuditLogStats,
+  Job,
   UploadUrlRequest,
   UploadUrlResponse
 } from '@/types/api'
@@ -23,6 +25,10 @@ export const queryKeys = {
   // Videos
   videos: (params?: Record<string, any>) => ['videos', params] as const,
   video: (id: string) => ['videos', id] as const,
+  
+  // Admin Movies
+  adminMovies: (params?: Record<string, any>) => ['admin', 'movies', params] as const,
+  adminMovie: (id: string) => ['admin', 'movies', id] as const,
   
   // Genres
   genres: (params?: Record<string, any>) => ['genres', params] as const,
@@ -130,6 +136,88 @@ export function useDeleteVideo() {
   })
 }
 
+// Admin Movies Hooks
+export function useAdminMovies(params?: Record<string, any>) {
+  return useQuery({
+    queryKey: queryKeys.adminMovies(params),
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      const searchParams = new URLSearchParams()
+      
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== '') {
+            searchParams.append(key, String(value))
+          }
+        })
+      }
+      
+      const endpoint = searchParams.toString() ? `/admin/movies?${searchParams}` : '/admin/movies'
+      return apiClient.get<PaginationResponse<Video>>(endpoint)
+    },
+  })
+}
+
+export function useAdminMovie(id: string) {
+  return useQuery({
+    queryKey: queryKeys.adminMovie(id),
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.get<{success: boolean, data: Video}>(`/admin/movies/${id}`)
+      return response.data
+    },
+    enabled: !!id,
+  })
+}
+
+export function useUpdateMovieStatus() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ id, isPublished }: { id: string; isPublished: boolean }) => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.put<{success: boolean, data: Video}>(`/admin/movies/${id}/publish`, { isPublished })
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'movies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats })
+    },
+  })
+}
+
+export function useUpdateMovie() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; [key: string]: any }) => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.put<{success: boolean, data: Video}>(`/admin/movies/${id}`, data)
+      return response.data
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'movies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminMovie(variables.id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats })
+    },
+  })
+}
+
+export function useDeleteMovie() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.delete(`/admin/movies/${id}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'movies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats })
+    },
+  })
+}
+
 // Genre Hooks
 export function useGenres(params?: Record<string, any>) {
   return useQuery({
@@ -138,6 +226,22 @@ export function useGenres(params?: Record<string, any>) {
       const apiClient = getAuthenticatedApiClient()
       const searchParams = new URLSearchParams(params)
       return apiClient.get<PaginationResponse<Genre>>(`/genres?${searchParams}`)
+    },
+  })
+}
+
+export function useAllGenres() {
+  return useQuery({
+    queryKey: ['genres', 'all'],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      try {
+        const response = await apiClient.get<PaginationResponse<Genre>>('/genres?limit=1000')
+        return response.data || []
+      } catch (error) {
+        console.warn('Failed to fetch genres:', error)
+        return []
+      }
     },
   })
 }
@@ -191,7 +295,23 @@ export function useCastMembers(params?: Record<string, any>) {
     queryFn: async () => {
       const apiClient = getAuthenticatedApiClient()
       const searchParams = new URLSearchParams(params)
-      return apiClient.get<PaginationResponse<CastMember>>(`/cast?${searchParams}`)
+      return apiClient.get<PaginationResponse<CastMember>>(`/casts?${searchParams}`)
+    },
+  })
+}
+
+export function useAllCasts() {
+  return useQuery({
+    queryKey: ['casts', 'all'],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      try {
+        const response = await apiClient.get<PaginationResponse<CastMember>>('/casts?limit=1000')
+        return response.data || []
+      } catch (error) {
+        console.warn('Failed to fetch casts:', error)
+        return []
+      }
     },
   })
 }
@@ -299,6 +419,48 @@ export function useAuditLogs(params?: Record<string, any>) {
   })
 }
 
+export function useAuditLogStats(period: string = '7d') {
+  return useQuery({
+    queryKey: ['auditLogStats', period],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.get<{ data: AuditLogStats }>(`/audit-logs/stats?period=${period}`)
+    },
+  })
+}
+
+export function useExportAuditLogs() {
+  return useMutation({
+    mutationFn: async (params: { format?: string; filters?: Record<string, any> }) => {
+      const apiClient = getAuthenticatedApiClient()
+      const searchParams = new URLSearchParams({
+        format: params.format || 'csv',
+        ...params.filters,
+      })
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/audit-logs/export?${searchParams}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+        },
+      })
+      
+      if (!response.ok) {
+        throw new Error('Export failed')
+      }
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `audit-logs-${new Date().toISOString().split('T')[0]}.${params.format || 'csv'}`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    },
+  })
+}
+
 // Upload Hooks
 export function useCreateUploadUrl() {
   return useMutation<UploadUrlResponse, Error, UploadUrlRequest>({
@@ -307,5 +469,311 @@ export function useCreateUploadUrl() {
       const response = await apiClient.post('/upload/presigned', data) as any
       return response.data as UploadUrlResponse
     },
+  })
+}
+
+// Admin Movie Hooks
+export function useGenerateMovieUploadUrl() {
+  return useMutation({
+    mutationFn: async (data: { filename: string; contentType: string }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          uploadUrl: string
+          videoKey: string
+          expiresAt: string
+        }
+      }>('/admin/movies/upload-url', data)
+    },
+  })
+}
+
+export function useCreateMovie() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (data: {
+      slug?: string
+      titleVi?: string
+      titleEn?: string
+      descriptionVi?: string
+      descriptionEn?: string
+      type: 'MOVIE' | 'SERIES'
+      year?: number
+      posterUrl?: string
+      backdropUrl?: string
+      ageRating?: string
+      durationMinutes?: number
+      genreIds?: string[]
+      castIds?: string[]
+      rawVideoKey?: string
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          id: string
+          slug: string
+          titleVi: string
+          titleEn: string
+          type: 'MOVIE' | 'SERIES'
+          isPublished: boolean
+          createdAt: string
+          genres: any[]
+          casts: any[]
+        }
+      }>('/admin/movies', data)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats })
+    },
+  })
+}
+
+export function useStartTranscoding() {
+  return useMutation({
+    mutationFn: async ({ 
+      movieId, 
+      rawVideoKey, 
+      qualities 
+    }: { 
+      movieId: string
+      rawVideoKey: string
+      qualities?: string[]
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          jobId: string
+          status: string
+          message: string
+        }
+      }>(`/admin/movies/${movieId}/transcode`, {
+        rawVideoKey,
+        qualities: qualities || ['480p', '720p', '1080p']
+      })
+    },
+  })
+}
+
+export function useTranscodingStatus(movieId: string, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['movies', movieId, 'transcoding-status'],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.get<{
+        success: boolean
+        data: {
+          status: 'queued' | 'processing' | 'completed' | 'failed'
+          progress: number
+          message: string
+          hlsManifestKey?: string
+        }
+      }>(`/admin/movies/${movieId}/transcode/status`)
+    },
+    enabled: enabled && !!movieId,
+    refetchInterval: (query) => {
+      // Keep polling if status is not final
+      const status = query.state.data?.data?.status
+      return (status === 'queued' || status === 'processing') ? 5000 : false
+    },
+  })
+}
+
+export function usePublishMovie() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ movieId, isPublished }: { movieId: string; isPublished: boolean }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.patch<{
+        success: boolean
+        data: {
+          id: string
+          slug: string
+          titleVi: string
+          titleEn: string
+          isPublished: boolean
+          movieSources: Array<{
+            hlsManifestKey: string
+            isPublished: boolean
+            subtitlesJson: any[]
+          }>
+        }
+      }>(`/admin/movies/${movieId}/publish`, { isPublished })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
+    },
+  })
+}
+
+export function useGenerateSubtitleUploadUrl() {
+  return useMutation({
+    mutationFn: async ({ movieId, language }: { movieId: string; language: string }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          uploadUrl: string
+          subtitleKey: string
+          language: string
+          expiresAt: string
+        }
+      }>(`/admin/movies/${movieId}/subtitles/upload-url`, { language })
+    },
+  })
+}
+
+export function useAddSubtitle() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ 
+      movieId, 
+      language, 
+      subtitleKey 
+    }: { 
+      movieId: string
+      language: string
+      subtitleKey: string
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          message: string
+          subtitles: Array<{
+            lang: string
+            label: string
+            key: string
+          }>
+        }
+      }>(`/admin/movies/${movieId}/subtitles`, { language, subtitleKey })
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.video(variables.movieId) })
+    },
+  })
+}
+
+// Image upload hooks
+export function useGenerateImageUploadUrl() {
+  return useMutation({
+    mutationFn: async ({ 
+      movieId, 
+      filename, 
+      contentType, 
+      imageType 
+    }: { 
+      movieId: string
+      filename: string
+      contentType: string
+      imageType: 'poster' | 'backdrop'
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          uploadUrl: string
+          imageKey: string
+          imageType: string
+          filename: string
+          contentType: string
+          expiresAt: string
+        }
+      }>(`/admin/movies/${movieId}/images/upload-url`, { filename, contentType, imageType })
+    },
+  })
+}
+
+export function useUpdateMovieImage() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ 
+      movieId, 
+      imageType, 
+      imageKey 
+    }: { 
+      movieId: string
+      imageType: 'poster' | 'backdrop'
+      imageKey: string
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.put<{
+        success: boolean
+        data: {
+          message: string
+          imageUrl: string
+          posterUrl?: string
+          backdropUrl?: string
+        }
+      }>(`/admin/movies/${movieId}/images`, { imageType, imageKey })
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminMovie(variables.movieId) })
+    },
+  })
+}
+
+// Transcode jobs hooks
+export const useTranscodeJobs = (params?: {
+  page?: string
+  limit?: string
+  status?: string
+}) => {
+  const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set('page', params.page)
+  if (params?.limit) searchParams.set('limit', params.limit)
+  if (params?.status) searchParams.set('status', params.status)
+  searchParams.set('_t', Date.now().toString()) // Cache busting
+
+  return useQuery({
+    queryKey: ['transcode-jobs', params],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.get<{
+        success: boolean
+        data: TranscodeJob[]
+        pagination: {
+          page: number
+          limit: number
+          total: number
+          pages: number
+        }
+      }>(`/admin/transcode-jobs?${searchParams.toString()}`)
+      return response.data
+    },
+    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
+    staleTime: 0, // Always consider data stale
+  })
+}
+
+export const useTranscodeJobStatus = (videoId: string) => {
+  return useQuery({
+    queryKey: ['transcode-status', videoId],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      const response = await apiClient.get<{
+        success: boolean
+        data: {
+          status: string
+          progress: number
+          message: string
+          jobId: string
+          startedAt?: string
+          completedAt?: string
+          errorMessage?: string
+          hlsManifestKey?: string
+        }
+      }>(`/admin/movies/${videoId}/transcode/status`)
+      return response.data
+    },
+    enabled: !!videoId,
+    refetchInterval: 3000, // Refresh every 3 seconds
   })
 }
