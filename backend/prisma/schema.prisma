@@ -35,6 +35,13 @@ enum AgeRating {
   NC17
 }
 
+enum VideoQuality {
+  CAM
+  HD
+  FHD
+  FOURK @map("4K")
+}
+
 enum SubscriptionPlan {
   FREE
   PREMIUM
@@ -97,22 +104,30 @@ model Genre {
 }
 
 model Video {
-  id             String    @id @default(uuid())
-  slug           String    @unique
-  titleVi        String    @map("title_vi")
-  titleEn        String    @map("title_en")
-  descriptionVi  String?   @map("description_vi") @db.Text
-  descriptionEn  String?   @map("description_en") @db.Text
-  type           VideoType
-  year           Int
-  posterUrl      String?   @map("poster_url")
-  backdropUrl    String?   @map("backdrop_url")
-  ageRating      AgeRating @map("age_rating")
-  durationMinutes Int?     @map("duration_minutes") // Nullable for SERIES
-  isPublished    Boolean   @default(false) @map("is_published")
-  viewsCount     BigInt    @default(0) @map("views_count")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id              String         @id @default(uuid())
+  slug            String         @unique
+  titleVi         String         @map("title_vi")
+  titleEn         String         @map("title_en")
+  originalTitle   String?        @map("original_title")
+  englishTitle    String?        @map("english_title")
+  descriptionVi   String?        @map("description_vi") @db.Text
+  descriptionEn   String?        @map("description_en") @db.Text
+  overview        String?        @db.Text
+  type            VideoType
+  year            Int
+  posterUrl       String?        @map("poster_url")
+  backdropUrl     String?        @map("backdrop_url")
+  imagesJson      Json?          @map("images_json") // Store complex image data
+  ageRating       AgeRating      @map("age_rating")
+  durationMinutes Int?           @map("duration_minutes") // Nullable for SERIES
+  quality         VideoQuality?  @default(HD)
+  originCountry   Json?          @map("origin_country") // Array of country codes
+  imdbRating      Float?         @map("imdb_rating")
+  imdbId          String?        @map("imdb_id")
+  isPublished     Boolean        @default(false) @map("is_published")
+  viewsCount      BigInt         @default(0) @map("views_count")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
 
   // Relations
   genres       VideoGenre[]
@@ -172,6 +187,7 @@ model Episode {
 model MovieSource {
   id                    String   @id @default(uuid())
   videoId               String   @map("video_id")
+  rawVideoKey           String?  @map("raw_video_key") // Original uploaded video file
   hlsManifestKey        String?  @map("hls_manifest_key")
   trailerHlsManifestKey String?  @map("trailer_hls_manifest_key")
   subtitlesJson         Json?    @map("subtitles_json") // Array of {lang, label, key}

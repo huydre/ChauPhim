@@ -1,4 +1,4 @@
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import config from '../../config';
 import logger from '../../config/logger';
@@ -88,6 +88,21 @@ class StorageService {
 
   generateSubtitleKey(videoId: string, language: string): string {
     return `videos/${videoId}/subtitles/${language}.vtt`;
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    try {
+      const command = new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      });
+
+      await this.s3Client.send(command);
+      logger.info(`File deleted successfully: ${key}`);
+    } catch (error: any) {
+      logger.error('Storage delete error:', error);
+      throw new Error('Failed to delete file');
+    }
   }
 }
 

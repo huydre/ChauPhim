@@ -49,12 +49,19 @@ interface VideoForm {
   slug: string
   titleVi: string
   titleEn: string
+  originalTitle: string
+  englishTitle: string
   descriptionVi: string
   descriptionEn: string
+  overview: string
   type: 'MOVIE' | 'SERIES'
   year: number
   ageRating: string
   durationMinutes: number
+  quality: string
+  originCountry: string[]
+  imdbRating: number | null
+  imdbId: string
   posterUrl: string
   backdropUrl: string
   genreIds: string[]
@@ -107,12 +114,19 @@ export default function NewVideoPage() {
     slug: '',
     titleVi: '',
     titleEn: '',
+    originalTitle: '',
+    englishTitle: '',
     descriptionVi: '',
     descriptionEn: '',
+    overview: '',
     type: 'MOVIE',
     year: new Date().getFullYear(),
     ageRating: 'PG-13',
     durationMinutes: 0,
+    quality: 'HD',
+    originCountry: [],
+    imdbRating: null,
+    imdbId: '',
     posterUrl: '',
     backdropUrl: '',
     genreIds: [],
@@ -123,10 +137,12 @@ export default function NewVideoPage() {
 
   const [newGenre, setNewGenre] = useState('')
   const [newCastMember, setNewCastMember] = useState('')
+  const [newOriginCountry, setNewOriginCountry] = useState('')
 
   // Mock data
   const availableGenres = ['Action', 'Drama', 'Comedy', 'Horror', 'Sci-Fi', 'Romance', 'Thriller']
   const availableCastMembers = ['Brad Pitt', 'Angelina Jolie', 'Leonardo DiCaprio', 'Scarlett Johansson']
+  const availableCountries = ['Việt Nam', 'Hoa Kỳ', 'Nhật Bản', 'Hàn Quốc', 'Trung Quốc', 'Thái Lan', 'Anh', 'Pháp', 'Đức', 'Ý']
   const ageRatings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-MA']
 
   // Effect to update upload status based on transcoding progress
@@ -168,7 +184,7 @@ export default function NewVideoPage() {
     }
   }
 
-  const addItem = (field: 'genreIds' | 'castIds', value: string) => {
+  const addItem = (field: 'genreIds' | 'castIds' | 'originCountry', value: string) => {
     if (value.trim() && !formData[field].includes(value.trim())) {
       setFormData(prev => ({
         ...prev,
@@ -177,7 +193,7 @@ export default function NewVideoPage() {
     }
   }
 
-  const removeItem = (field: 'genreIds' | 'castIds', value: string) => {
+  const removeItem = (field: 'genreIds' | 'castIds' | 'originCountry', value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: prev[field].filter(item => item !== value)
@@ -264,14 +280,21 @@ export default function NewVideoPage() {
         slug: formData.slug || undefined, // Let server generate if empty
         titleVi: formData.titleVi || undefined, // Let server generate from filename
         titleEn: formData.titleEn || undefined,
+        originalTitle: formData.originalTitle || undefined,
+        englishTitle: formData.englishTitle || undefined,
         descriptionVi: formData.descriptionVi || undefined, // Server will generate default
         descriptionEn: formData.descriptionEn || undefined,
+        overview: formData.overview || undefined,
         type: formData.type,
         year: formData.year || undefined, // Server may extract from filename
         posterUrl: formData.posterUrl || undefined,
         backdropUrl: formData.backdropUrl || undefined,
         ageRating: formData.ageRating || 'PG13',
         durationMinutes: formData.durationMinutes || undefined, // Server will set default
+        quality: formData.quality || 'HD',
+        originCountry: formData.originCountry.length > 0 ? formData.originCountry : undefined,
+        imdbRating: formData.imdbRating || undefined,
+        imdbId: formData.imdbId || undefined,
         genreIds: formData.genreIds.length > 0 ? formData.genreIds : undefined,
         castIds: formData.castIds.length > 0 ? formData.castIds : undefined,
         rawVideoKey: formData.rawVideoKey
@@ -603,6 +626,27 @@ export default function NewVideoPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="originalTitle">Tiêu đề gốc</Label>
+                  <Input
+                    id="originalTitle"
+                    value={formData.originalTitle}
+                    onChange={(e) => handleInputChange('originalTitle', e.target.value)}
+                    placeholder="Original title"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="englishTitle">Tiêu đề tiếng Anh gốc</Label>
+                  <Input
+                    id="englishTitle"
+                    value={formData.englishTitle}
+                    onChange={(e) => handleInputChange('englishTitle', e.target.value)}
+                    placeholder="Original English title"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="slug">URL Slug (tự động tạo) *</Label>
                 <Input
@@ -635,6 +679,17 @@ export default function NewVideoPage() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="overview">Tóm tắt nội dung</Label>
+                <Textarea
+                  id="overview"
+                  value={formData.overview}
+                  onChange={(e) => handleInputChange('overview', e.target.value)}
+                  placeholder="Nhập tóm tắt nội dung phim..."
+                  rows={3}
+                />
+              </div>
+
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="type">Loại video *</Label>
@@ -662,6 +717,23 @@ export default function NewVideoPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="quality">Chất lượng</Label>
+                  <select
+                    id="quality"
+                    value={formData.quality}
+                    onChange={(e) => handleInputChange('quality', e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="CAM">CAM</option>
+                    <option value="HD">HD</option>
+                    <option value="FHD">Full HD</option>
+                    <option value="FOURK">4K</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label htmlFor="ageRating">Phân loại độ tuổi</Label>
                   <select
                     id="ageRating"
@@ -674,9 +746,7 @@ export default function NewVideoPage() {
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="duration">Thời lượng (phút)</Label>
                   <Input
@@ -686,6 +756,32 @@ export default function NewVideoPage() {
                     onChange={(e) => handleInputChange('durationMinutes', parseInt(e.target.value))}
                     placeholder="120"
                     min="1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="imdbRating">Điểm IMDB</Label>
+                  <Input
+                    id="imdbRating"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
+                    value={formData.imdbRating || ''}
+                    onChange={(e) => handleInputChange('imdbRating', e.target.value ? parseFloat(e.target.value) : null)}
+                    placeholder="8.5"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="imdbId">IMDB ID</Label>
+                  <Input
+                    id="imdbId"
+                    value={formData.imdbId}
+                    onChange={(e) => handleInputChange('imdbId', e.target.value)}
+                    placeholder="tt1234567"
                   />
                 </div>
               </div>
@@ -892,6 +988,45 @@ export default function NewVideoPage() {
                 </div>
               </div>
 
+              {/* Origin Countries */}
+              <div className="space-y-2">
+                <Label>Quốc gia sản xuất</Label>
+                <div className="flex gap-2">
+                  <select
+                    value={newOriginCountry}
+                    onChange={(e) => setNewOriginCountry(e.target.value)}
+                    className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Chọn quốc gia</option>
+                    {availableCountries.map(country => (
+                      <option key={country} value={country}>{country}</option>
+                    ))}
+                  </select>
+                  <Button 
+                    onClick={() => {
+                      if (newOriginCountry) {
+                        addItem('originCountry', newOriginCountry)
+                        setNewOriginCountry('')
+                      }
+                    }}
+                    disabled={!newOriginCountry}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {formData.originCountry.map(country => (
+                    <Badge key={country} variant="secondary" className="flex items-center gap-1">
+                      {country}
+                      <X 
+                        className="h-3 w-3 cursor-pointer" 
+                        onClick={() => removeItem('originCountry', country)}
+                      />
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
               {/* Summary */}
               <Separator />
               <div className="space-y-4">
@@ -927,6 +1062,10 @@ export default function NewVideoPage() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Diễn viên:</span>
                       <span>{formData.castIds.length} người</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Quốc gia:</span>
+                      <span>{formData.originCountry.length} quốc gia</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Video:</span>

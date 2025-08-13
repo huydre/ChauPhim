@@ -2,20 +2,43 @@ import prisma from '../../infra/db';
 import storageService from '../../infra/storage';
 import queueService from '../../infra/queue';
 import { AppError } from '../../middlewares/errorHandler';
-import { VideoType, AgeRating } from '@prisma/client';
+import { VideoType, AgeRating, VideoQuality } from '@prisma/client';
+import { config } from '../../config';
+import { v4 as uuidv4 } from 'uuid';
 import logger from '../../config/logger';
 import { auditLogger, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../../utils/auditLogger';
+
+export interface MovieImage {
+  _id?: string;
+  path: string;
+}
+
+export interface MovieImages {
+  posters?: MovieImage[];
+  horizontal_posters?: MovieImage[];
+  backdrops?: MovieImage[];
+  titles?: MovieImage[];
+}
 
 export interface CreateMovieData {
   slug?: string;
   titleVi?: string;
   titleEn?: string;
+  originalTitle?: string;
+  englishTitle?: string;
   descriptionVi?: string;
   descriptionEn?: string;
+  overview?: string;
   type?: VideoType;
   year?: number;
   posterUrl?: string;
   backdropUrl?: string;
+  images?: MovieImages;
+  quality?: string; // VideoQuality enum
+  originCountry?: string[];
+  imdbRating?: number;
+  imdbId?: string;
+  imagesJson?: MovieImages; // Complex image data structure
   ageRating?: string;
   durationMinutes?: number;
   genreIds?: string[];
@@ -27,11 +50,19 @@ export interface UpdateMovieData {
   slug?: string;
   titleVi?: string;
   titleEn?: string;
+  originalTitle?: string;
+  englishTitle?: string;
   descriptionVi?: string;
   descriptionEn?: string;
+  overview?: string;
   year?: number;
   posterUrl?: string;
   backdropUrl?: string;
+  quality?: string; // VideoQuality enum
+  originCountry?: string[];
+  imdbRating?: number;
+  imdbId?: string;
+  imagesJson?: MovieImages; // Complex image data structure
   ageRating?: string;
   durationMinutes?: number;
   genreIds?: string[];
@@ -48,13 +79,15 @@ export interface AdminMovieFilters {
 export class AdminService {
   async generateUploadUrl(filename: string, contentType: string) {
     try {
+      logger.info(`Generating upload URL for: ${filename}, contentType: ${contentType}`);
+      
       // Generate unique key for the file
       const videoKey = storageService.generateKey('uploads/raw', filename);
+      logger.info(`Generated video key: ${videoKey}`);
       
       // Generate presigned upload URL (expires in 1 hour)
       const uploadUrl = await storageService.getUploadPresignedUrl(videoKey, contentType, 3600);
-      
-      logger.info(`Generated upload URL for file: ${filename}`);
+      logger.info(`Generated upload URL successfully for: ${filename}`);
       
       return {
         uploadUrl,
@@ -62,8 +95,13 @@ export class AdminService {
         expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
       };
     } catch (error: any) {
-      logger.error('Failed to generate upload URL:', error);
-      throw new AppError('Failed to generate upload URL', 500);
+      logger.error('Failed to generate upload URL:', {
+        error: error.message,
+        stack: error.stack,
+        filename,
+        contentType
+      });
+      throw new AppError('Failed to generate upload URL: ' + error.message, 500);
     }
   }
 
@@ -104,12 +142,20 @@ export class AdminService {
         slug,
         titleVi: data.titleVi || defaultTitle,
         titleEn: data.titleEn || defaultTitle,
+        originalTitle: data.originalTitle,
+        englishTitle: data.englishTitle,
         descriptionVi: data.descriptionVi || `Phim ${defaultTitle} - Được upload vào ${new Date().toLocaleDateString('vi-VN')}`,
         descriptionEn: data.descriptionEn || `${defaultTitle} - Uploaded on ${new Date().toLocaleDateString('en-US')}`,
+        overview: data.overview,
         type: data.type || 'MOVIE',
         year: data.year || filenameInfo.year || currentYear,
         posterUrl: data.posterUrl,
         backdropUrl: data.backdropUrl,
+        quality: data.quality || 'HD', // Default to HD
+        originCountry: data.originCountry ? JSON.stringify(data.originCountry) : null,
+        imdbRating: data.imdbRating,
+        imdbId: data.imdbId,
+        imagesJson: data.imagesJson ? JSON.stringify(data.imagesJson) : undefined,
         ageRating: this.normalizeAgeRating(data.ageRating),
         durationMinutes: data.durationMinutes || 120, // Default 2 hours
         isPublished: false, // Start as unpublished
@@ -118,7 +164,7 @@ export class AdminService {
 
       // Create video record with enhanced defaults
       const video = await prisma.video.create({
-        data: movieData,
+        data: movieData as any, // Type casting until Prisma client is regenerated
       });
 
       // Create movie source if rawVideoKey is provided
@@ -218,11 +264,19 @@ export class AdminService {
           slug: data.slug,
           titleVi: data.titleVi,
           titleEn: data.titleEn,
+          originalTitle: data.originalTitle,
+          englishTitle: data.englishTitle,
           descriptionVi: data.descriptionVi,
           descriptionEn: data.descriptionEn,
+          overview: data.overview,
           year: data.year,
           posterUrl: data.posterUrl,
           backdropUrl: data.backdropUrl,
+          quality: data.quality as any, // Type casting until Prisma client is regenerated
+          originCountry: data.originCountry ? JSON.stringify(data.originCountry) : undefined,
+          imdbRating: data.imdbRating,
+          imdbId: data.imdbId,
+          imagesJson: data.imagesJson ? JSON.stringify(data.imagesJson) : undefined,
           ageRating: data.ageRating as any,
           durationMinutes: data.durationMinutes,
         },
@@ -595,6 +649,203 @@ export class AdminService {
     }
   }
 
+  // Replace video file for existing movie
+  async replaceMovieVideo(videoId: string, newVideoKey: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+        include: { movieSources: true },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      // Update or create movie source with new video
+      if (video.movieSources.length > 0) {
+        await prisma.movieSource.updateMany({
+          where: { videoId },
+          data: {
+            rawVideoKey: newVideoKey,
+            hlsManifestKey: null, // Reset HLS, will need re-transcoding
+            isPublished: false, // Unpublish until re-transcoded
+          },
+        });
+      } else {
+        await prisma.movieSource.create({
+          data: {
+            videoId,
+            rawVideoKey: newVideoKey,
+            isPublished: false,
+          },
+        });
+      }
+
+      logger.info(`Replaced video for movie ${videoId} with new key: ${newVideoKey}`);
+
+      return await this.getMovieById(videoId);
+    } catch (error: any) {
+      logger.error('Failed to replace movie video:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to replace movie video', 500);
+    }
+  }
+
+  // Add subtitle to movie using JSON storage
+  async addMovieSubtitle(videoId: string, language: string, label: string, subtitleKey: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+        include: { movieSources: true },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      if (video.movieSources.length === 0) {
+        throw new AppError('Movie has no video source', 400);
+      }
+
+      const movieSource = video.movieSources[0];
+      
+      if (!movieSource) {
+        throw new AppError('Movie source not found', 400);
+      }
+      
+      // Get existing subtitles
+      const existingSubtitles = movieSource.subtitlesJson as any[] || [];
+      
+      // Check if subtitle for this language already exists
+      const existingIndex = existingSubtitles.findIndex(sub => sub.language === language);
+      
+      const newSubtitle = {
+        language,
+        label,
+        key: subtitleKey,
+        url: storageService.getPublicUrl(subtitleKey),
+      };
+
+      if (existingIndex >= 0) {
+        // Update existing subtitle
+        existingSubtitles[existingIndex] = newSubtitle;
+        logger.info(`Updated subtitle for movie ${videoId}, language: ${language}`);
+      } else {
+        // Add new subtitle
+        existingSubtitles.push(newSubtitle);
+        logger.info(`Added new subtitle for movie ${videoId}, language: ${language}`);
+      }
+
+      // Update movie source with new subtitles
+      await prisma.movieSource.update({
+        where: { id: movieSource.id },
+        data: {
+          subtitlesJson: existingSubtitles,
+        },
+      });
+
+      return await this.getMovieById(videoId);
+    } catch (error: any) {
+      logger.error('Failed to add movie subtitle:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to add movie subtitle', 500);
+    }
+  }
+
+  // Get all subtitles for a movie
+  async getMovieSubtitles(videoId: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+        include: { movieSources: true },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      const subtitles = video.movieSources.flatMap(source => 
+        (source.subtitlesJson as any[] || [])
+      );
+
+      return {
+        videoId,
+        subtitles: subtitles.map((subtitle, index) => ({
+          id: `${videoId}-${subtitle.language}`, // Generate ID for frontend
+          language: subtitle.language,
+          label: subtitle.label,
+          key: subtitle.key,
+          url: subtitle.url || storageService.getPublicUrl(subtitle.key),
+        })),
+      };
+    } catch (error: any) {
+      logger.error('Failed to get movie subtitles:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to get movie subtitles', 500);
+    }
+  }
+
+  // Delete subtitle
+  async deleteMovieSubtitle(videoId: string, language: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+        include: { movieSources: true },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      if (video.movieSources.length === 0) {
+        throw new AppError('Movie has no video source', 400);
+      }
+
+      const movieSource = video.movieSources[0];
+      
+      if (!movieSource) {
+        throw new AppError('Movie source not found', 400);
+      }
+      
+      const existingSubtitles = movieSource.subtitlesJson as any[] || [];
+      
+      // Find and remove subtitle
+      const subtitleIndex = existingSubtitles.findIndex(sub => sub.language === language);
+      
+      if (subtitleIndex === -1) {
+        throw new AppError('Subtitle not found', 404);
+      }
+
+      const subtitleToDelete = existingSubtitles[subtitleIndex];
+      
+      // Remove from array
+      existingSubtitles.splice(subtitleIndex, 1);
+
+      // Update movie source
+      await prisma.movieSource.update({
+        where: { id: movieSource.id },
+        data: {
+          subtitlesJson: existingSubtitles,
+        },
+      });
+
+      // Delete subtitle file from storage
+      try {
+        await storageService.deleteObject(subtitleToDelete.key);
+      } catch (error) {
+        logger.warn(`Failed to delete subtitle file: ${subtitleToDelete.key}`, error);
+      }
+
+      logger.info(`Deleted subtitle ${language} for video ${videoId}`);
+
+      return { message: 'Subtitle deleted successfully' };
+    } catch (error: any) {
+      logger.error('Failed to delete subtitle:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to delete subtitle', 500);
+    }
+  }
+
   async getImageUploadUrl(videoId: string, filename: string, contentType: string, imageType: 'poster' | 'backdrop') {
     try {
       const video = await prisma.video.findUnique({
@@ -800,7 +1051,60 @@ export class AdminService {
       ]);
 
       return {
-        data: videos,
+        data: videos.map(video => {
+          // Create images structure from existing data
+          const images: MovieImages = {
+            posters: [],
+            horizontal_posters: [],
+            backdrops: [],
+            titles: []
+          };
+
+          // Add poster if exists
+          if (video.posterUrl) {
+            images.posters?.push({
+              path: video.posterUrl
+            });
+          }
+
+          // Add backdrop if exists
+          if (video.backdropUrl) {
+            images.backdrops?.push({
+              path: video.backdropUrl
+            });
+          }
+
+          // Merge with imagesJson if exists
+          let parsedImagesJson = null;
+          if (video.imagesJson) {
+            try {
+              parsedImagesJson = JSON.parse(video.imagesJson as string);
+              // Merge additional images from imagesJson
+              if (parsedImagesJson.posters) {
+                images.posters = [...(images.posters || []), ...parsedImagesJson.posters];
+              }
+              if (parsedImagesJson.horizontal_posters) {
+                images.horizontal_posters = [...(images.horizontal_posters || []), ...parsedImagesJson.horizontal_posters];
+              }
+              if (parsedImagesJson.backdrops) {
+                images.backdrops = [...(images.backdrops || []), ...parsedImagesJson.backdrops];
+              }
+              if (parsedImagesJson.titles) {
+                images.titles = [...(images.titles || []), ...parsedImagesJson.titles];
+              }
+            } catch (error) {
+              logger.warn('Failed to parse imagesJson for video:', video.id);
+            }
+          }
+
+          return {
+            ...video,
+            originCountry: video.originCountry ? JSON.parse(video.originCountry as string) : null,
+            images: images,
+            // Keep imagesJson for backward compatibility
+            imagesJson: parsedImagesJson,
+          };
+        }),
         meta: {
           page,
           limit,
@@ -842,7 +1146,7 @@ export class AdminService {
   }
 
   async getMovieById(id: string) {
-    return await prisma.video.findUnique({
+    const movie = await prisma.video.findUnique({
       where: { id },
       include: {
         genres: {
@@ -884,6 +1188,62 @@ export class AdminService {
         },
       },
     });
+
+    if (!movie) return null;
+
+    // Create images structure from existing data
+    const images: MovieImages = {
+      posters: [],
+      horizontal_posters: [],
+      backdrops: [],
+      titles: []
+    };
+
+    // Add poster if exists
+    if (movie.posterUrl) {
+      images.posters?.push({
+        path: movie.posterUrl
+      });
+    }
+
+    // Add backdrop if exists
+    if (movie.backdropUrl) {
+      images.backdrops?.push({
+        path: movie.backdropUrl
+      });
+    }
+
+    // Merge with imagesJson if exists
+    let parsedImagesJson = null;
+    if (movie.imagesJson) {
+      try {
+        parsedImagesJson = JSON.parse(movie.imagesJson as string);
+        // Merge additional images from imagesJson
+        if (parsedImagesJson.posters) {
+          images.posters = [...(images.posters || []), ...parsedImagesJson.posters];
+        }
+        if (parsedImagesJson.horizontal_posters) {
+          images.horizontal_posters = [...(images.horizontal_posters || []), ...parsedImagesJson.horizontal_posters];
+        }
+        if (parsedImagesJson.backdrops) {
+          images.backdrops = [...(images.backdrops || []), ...parsedImagesJson.backdrops];
+        }
+        if (parsedImagesJson.titles) {
+          images.titles = [...(images.titles || []), ...parsedImagesJson.titles];
+        }
+      } catch (error) {
+        logger.warn('Failed to parse imagesJson:', error);
+      }
+    }
+
+    // Parse and format the response
+    return {
+      ...movie,
+      originCountry: movie.originCountry ? JSON.parse(movie.originCountry as string) : null,
+      images: images,
+      // Keep imagesJson for backward compatibility
+      imagesJson: parsedImagesJson,
+    };
   }
 
   private getLanguageLabel(language: string): string {

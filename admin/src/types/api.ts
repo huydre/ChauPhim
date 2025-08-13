@@ -40,11 +40,18 @@ export interface Video {
   slug: string
   titleVi: string
   titleEn?: string
+  originalTitle?: string
+  englishTitle?: string
   descriptionVi?: string
   descriptionEn?: string
+  overview?: string
   type: 'MOVIE' | 'SERIES'
   year: number
   ageRating?: string
+  quality?: 'CAM' | 'HD' | 'FHD' | 'FOURK'
+  originCountry?: string[]
+  imdbRating?: number
+  imdbId?: string
   posterUrl?: string
   backdropUrl?: string
   durationMinutes?: number
