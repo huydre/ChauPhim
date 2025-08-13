@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import VideoReplacement from '@/components/video/VideoReplacement';
+import SubtitleManagement from '@/components/video/SubtitleManagement';
 import { 
   Edit, 
   Trash2, 
@@ -24,7 +26,9 @@ import {
   Settings,
   Download,
   Upload,
-  ArrowLeft
+  ArrowLeft,
+  RefreshCw,
+  Subtitles
 } from 'lucide-react';
 
 export default function MovieDetailsPage() {
@@ -152,9 +156,11 @@ export default function MovieDetailsPage() {
         {/* Main Content */}
         <div className="lg:col-span-2">
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="overview">Tổng quan</TabsTrigger>
               <TabsTrigger value="sources">Video Sources</TabsTrigger>
+              <TabsTrigger value="video-replacement">Thay Video</TabsTrigger>
+              <TabsTrigger value="subtitles">Subtitles</TabsTrigger>
               <TabsTrigger value="transcode">Transcode Jobs</TabsTrigger>
               <TabsTrigger value="analytics">Thống kê</TabsTrigger>
             </TabsList>
@@ -222,9 +228,9 @@ export default function MovieDetailsPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-2">
-                      {movie.genres.map((genre) => (
-                        <Badge key={genre.genre.id} variant="secondary">
-                          {genre.genre.nameVi || genre.genre.nameEn}
+                      {movie.genres.map((genre: any) => (
+                        <Badge key={genre.id || genre.genre?.id} variant="secondary">
+                          {genre.nameVi || genre.nameEn || genre.genre?.nameVi || genre.genre?.nameEn}
                         </Badge>
                       ))}
                     </div>
@@ -233,7 +239,7 @@ export default function MovieDetailsPage() {
               )}
 
               {/* Cast */}
-              {movie.casts && movie.casts.length > 0 && (
+              {movie.cast && movie.cast.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -243,16 +249,16 @@ export default function MovieDetailsPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {movie.casts.map((cast) => (
-                        <div key={cast.cast.id} className="flex items-center gap-3">
-                          {cast.cast.avatarUrl && (
+                      {movie.cast.map((cast: any) => (
+                        <div key={cast.id || cast.cast?.id} className="flex items-center gap-3">
+                          {(cast.avatarUrl || cast.cast?.avatarUrl) && (
                             <img
-                              src={cast.cast.avatarUrl}
-                              alt={cast.cast.name}
+                              src={cast.avatarUrl || cast.cast?.avatarUrl}
+                              alt={cast.name || cast.cast?.name}
                               className="w-10 h-10 rounded-full object-cover"
                             />
                           )}
-                          <span className="text-sm">{cast.cast.name}</span>
+                          <span className="text-sm">{cast.name || cast.cast?.name}</span>
                         </div>
                       ))}
                     </div>
@@ -290,7 +296,7 @@ export default function MovieDetailsPage() {
                             <div>
                               <span className="text-gray-500">Subtitles:</span>
                               <p className="text-xs mt-1">
-                                {source.subtitlesJson ? 'Có' : 'Không'}
+                                {(source as any).subtitlesJson ? 'Có' : 'Không'}
                               </p>
                             </div>
                           </div>
@@ -304,6 +310,18 @@ export default function MovieDetailsPage() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="video-replacement" className="space-y-4">
+              <VideoReplacement 
+                movieId={movieId}
+                currentVideoKey={movie.movieSources?.[0]?.rawVideoKey}
+                onSuccess={() => window.location.reload()}
+              />
+            </TabsContent>
+
+            <TabsContent value="subtitles" className="space-y-4">
+              <SubtitleManagement movieId={movieId} />
             </TabsContent>
 
             <TabsContent value="transcode" className="space-y-4">
@@ -447,9 +465,31 @@ export default function MovieDetailsPage() {
                 <Play className="w-4 h-4 mr-2" />
                 Xem trước
               </Button>
-              <Button variant="outline" size="sm" className="w-full">
-                <Upload className="w-4 h-4 mr-2" />
-                Upload video mới
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full"
+                onClick={() => {
+                  // Switch to video replacement tab
+                  const tabTrigger = document.querySelector('[value="video-replacement"]') as HTMLElement;
+                  if (tabTrigger) tabTrigger.click();
+                }}
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Thay thế video
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full"
+                onClick={() => {
+                  // Switch to subtitles tab
+                  const tabTrigger = document.querySelector('[value="subtitles"]') as HTMLElement;
+                  if (tabTrigger) tabTrigger.click();
+                }}
+              >
+                <Subtitles className="w-4 h-4 mr-2" />
+                Quản lý subtitle
               </Button>
               <Separator />
               <Button variant="destructive" size="sm" className="w-full" onClick={handleDelete}>

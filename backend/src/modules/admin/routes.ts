@@ -106,6 +106,28 @@ const imageUploadSchema = {
   }),
 };
 
+const replaceVideoSchema = {
+  body: z.object({
+    videoKey: z.string().min(1, 'Video key is required'),
+  }),
+  params: z.object({
+    id: z.string().uuid(),
+  }),
+};
+
+const movieSubtitleParamsSchema = {
+  params: z.object({
+    id: z.string().uuid(),
+  }),
+};
+
+const deleteSubtitleSchema = {
+  params: z.object({
+    id: z.string().uuid(),
+    language: z.string().min(2).max(10),
+  }),
+};
+
 /**
  * @swagger
  * /admin/movies/upload-url:
@@ -925,5 +947,227 @@ router.post('/movies/:id/subtitles',
  *         description: Admin access required
  */
 router.delete('/movies/:id', adminController.deleteMovie);
+
+// Video replacement and subtitle management routes
+
+/**
+ * @swagger
+ * /admin/movies/{id}/replace-video:
+ *   put:
+ *     summary: Replace video file for existing movie
+ *     description: Replace the video file with a new one, requires re-transcoding
+ *     tags: [Admin - Movies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - videoKey
+ *             properties:
+ *               videoKey:
+ *                 type: string
+ *                 description: Storage key of the new video file
+ *                 example: "uploads/raw/new-movie.mp4"
+ *     responses:
+ *       200:
+ *         description: Video replaced successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/Video'
+ *       400:
+ *         description: Invalid input
+ *       404:
+ *         description: Movie not found
+ *       403:
+ *         description: Admin access required
+ */
+router.put('/movies/:id/replace-video', 
+  validateRequest(replaceVideoSchema),
+  adminController.replaceMovieVideo
+);
+
+/**
+ * @swagger
+ * /admin/movies/{id}/subtitles:
+ *   get:
+ *     summary: Get all subtitles for a movie
+ *     tags: [Admin - Movies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Subtitles retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     videoId:
+ *                       type: string
+ *                     subtitles:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           language:
+ *                             type: string
+ *                           label:
+ *                             type: string
+ *                           key:
+ *                             type: string
+ *                           url:
+ *                             type: string
+ *       404:
+ *         description: Movie not found
+ *       403:
+ *         description: Admin access required
+ */
+router.get('/movies/:id/subtitles', 
+  validateRequest(movieSubtitleParamsSchema),
+  adminController.getMovieSubtitles
+);
+
+/**
+ * @swagger
+ * /admin/movies/{id}/subtitles:
+ *   post:
+ *     summary: Add subtitle to movie
+ *     tags: [Admin - Movies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - language
+ *               - label
+ *               - subtitleKey
+ *             properties:
+ *               language:
+ *                 type: string
+ *                 description: Language code (e.g., 'en', 'vi')
+ *                 example: "en"
+ *               label:
+ *                 type: string
+ *                 description: Display label for the subtitle
+ *                 example: "English"
+ *               subtitleKey:
+ *                 type: string
+ *                 description: Storage key of the subtitle file
+ *                 example: "videos/123/subtitles/en.vtt"
+ *     responses:
+ *       200:
+ *         description: Subtitle added successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/Video'
+ *       400:
+ *         description: Invalid input or movie has no video source
+ *       404:
+ *         description: Movie not found
+ *       403:
+ *         description: Admin access required
+ */
+router.post('/movies/:id/subtitles', 
+  validateRequest(addSubtitleSchema),
+  adminController.addMovieSubtitle
+);
+
+/**
+ * @swagger
+ * /admin/movies/{id}/subtitles/{language}:
+ *   delete:
+ *     summary: Delete subtitle from movie
+ *     tags: [Admin - Movies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: language
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Language code of the subtitle to delete
+ *         example: "en"
+ *     responses:
+ *       200:
+ *         description: Subtitle deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid input
+ *       404:
+ *         description: Movie or subtitle not found
+ *       403:
+ *         description: Admin access required
+ */
+router.delete('/movies/:id/subtitles/:language', 
+  validateRequest(deleteSubtitleSchema),
+  adminController.deleteMovieSubtitle
+);
 
 export default router;

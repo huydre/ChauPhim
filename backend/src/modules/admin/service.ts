@@ -649,6 +649,203 @@ export class AdminService {
     }
   }
 
+  // Replace video file for existing movie
+  async replaceMovieVideo(videoId: string, newVideoKey: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+        include: { movieSources: true },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      // Update or create movie source with new video
+      if (video.movieSources.length > 0) {
+        await prisma.movieSource.updateMany({
+          where: { videoId },
+          data: {
+            rawVideoKey: newVideoKey,
+            hlsManifestKey: null, // Reset HLS, will need re-transcoding
+            isPublished: false, // Unpublish until re-transcoded
+          },
+        });
+      } else {
+        await prisma.movieSource.create({
+          data: {
+            videoId,
+            rawVideoKey: newVideoKey,
+            isPublished: false,
+          },
+        });
+      }
+
+      logger.info(`Replaced video for movie ${videoId} with new key: ${newVideoKey}`);
+
+      return await this.getMovieById(videoId);
+    } catch (error: any) {
+      logger.error('Failed to replace movie video:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to replace movie video', 500);
+    }
+  }
+
+  // Add subtitle to movie using JSON storage
+  async addMovieSubtitle(videoId: string, language: string, label: string, subtitleKey: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+        include: { movieSources: true },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      if (video.movieSources.length === 0) {
+        throw new AppError('Movie has no video source', 400);
+      }
+
+      const movieSource = video.movieSources[0];
+      
+      if (!movieSource) {
+        throw new AppError('Movie source not found', 400);
+      }
+      
+      // Get existing subtitles
+      const existingSubtitles = movieSource.subtitlesJson as any[] || [];
+      
+      // Check if subtitle for this language already exists
+      const existingIndex = existingSubtitles.findIndex(sub => sub.language === language);
+      
+      const newSubtitle = {
+        language,
+        label,
+        key: subtitleKey,
+        url: storageService.getPublicUrl(subtitleKey),
+      };
+
+      if (existingIndex >= 0) {
+        // Update existing subtitle
+        existingSubtitles[existingIndex] = newSubtitle;
+        logger.info(`Updated subtitle for movie ${videoId}, language: ${language}`);
+      } else {
+        // Add new subtitle
+        existingSubtitles.push(newSubtitle);
+        logger.info(`Added new subtitle for movie ${videoId}, language: ${language}`);
+      }
+
+      // Update movie source with new subtitles
+      await prisma.movieSource.update({
+        where: { id: movieSource.id },
+        data: {
+          subtitlesJson: existingSubtitles,
+        },
+      });
+
+      return await this.getMovieById(videoId);
+    } catch (error: any) {
+      logger.error('Failed to add movie subtitle:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to add movie subtitle', 500);
+    }
+  }
+
+  // Get all subtitles for a movie
+  async getMovieSubtitles(videoId: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+        include: { movieSources: true },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      const subtitles = video.movieSources.flatMap(source => 
+        (source.subtitlesJson as any[] || [])
+      );
+
+      return {
+        videoId,
+        subtitles: subtitles.map((subtitle, index) => ({
+          id: `${videoId}-${subtitle.language}`, // Generate ID for frontend
+          language: subtitle.language,
+          label: subtitle.label,
+          key: subtitle.key,
+          url: subtitle.url || storageService.getPublicUrl(subtitle.key),
+        })),
+      };
+    } catch (error: any) {
+      logger.error('Failed to get movie subtitles:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to get movie subtitles', 500);
+    }
+  }
+
+  // Delete subtitle
+  async deleteMovieSubtitle(videoId: string, language: string) {
+    try {
+      const video = await prisma.video.findUnique({
+        where: { id: videoId },
+        include: { movieSources: true },
+      });
+
+      if (!video) {
+        throw new AppError('Movie not found', 404);
+      }
+
+      if (video.movieSources.length === 0) {
+        throw new AppError('Movie has no video source', 400);
+      }
+
+      const movieSource = video.movieSources[0];
+      
+      if (!movieSource) {
+        throw new AppError('Movie source not found', 400);
+      }
+      
+      const existingSubtitles = movieSource.subtitlesJson as any[] || [];
+      
+      // Find and remove subtitle
+      const subtitleIndex = existingSubtitles.findIndex(sub => sub.language === language);
+      
+      if (subtitleIndex === -1) {
+        throw new AppError('Subtitle not found', 404);
+      }
+
+      const subtitleToDelete = existingSubtitles[subtitleIndex];
+      
+      // Remove from array
+      existingSubtitles.splice(subtitleIndex, 1);
+
+      // Update movie source
+      await prisma.movieSource.update({
+        where: { id: movieSource.id },
+        data: {
+          subtitlesJson: existingSubtitles,
+        },
+      });
+
+      // Delete subtitle file from storage
+      try {
+        await storageService.deleteObject(subtitleToDelete.key);
+      } catch (error) {
+        logger.warn(`Failed to delete subtitle file: ${subtitleToDelete.key}`, error);
+      }
+
+      logger.info(`Deleted subtitle ${language} for video ${videoId}`);
+
+      return { message: 'Subtitle deleted successfully' };
+    } catch (error: any) {
+      logger.error('Failed to delete subtitle:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to delete subtitle', 500);
+    }
+  }
+
   async getImageUploadUrl(videoId: string, filename: string, contentType: string, imageType: 'poster' | 'backdrop') {
     try {
       const video = await prisma.video.findUnique({

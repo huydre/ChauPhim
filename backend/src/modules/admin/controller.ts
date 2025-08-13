@@ -304,4 +304,104 @@ export class AdminController {
       ...result,
     });
   });
+
+  // Replace video for existing movie
+  replaceMovieVideo = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { videoKey } = req.body;
+    
+    if (!id) {
+      res.status(400).json({
+        success: false,
+        message: 'Movie ID is required',
+      });
+      return;
+    }
+
+    if (!videoKey) {
+      res.status(400).json({
+        success: false,
+        message: 'Video key is required',
+      });
+      return;
+    }
+
+    const result = await this.adminService.replaceMovieVideo(id, videoKey);
+    
+    res.json({
+      success: true,
+      message: 'Video replaced successfully',
+      data: result,
+    });
+  });
+
+  // Add subtitle to movie
+  addMovieSubtitle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { language, label, subtitleKey } = req.body;
+    
+    if (!id) {
+      res.status(400).json({
+        success: false,
+        message: 'Movie ID is required',
+      });
+      return;
+    }
+
+    const result = await this.adminService.addMovieSubtitle(id, language, label, subtitleKey);
+    
+    res.json({
+      success: true,
+      message: 'Subtitle added successfully',
+      data: result,
+    });
+  });
+
+  // Get movie subtitles
+  getMovieSubtitles = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const { id } = req.params;
+    
+    if (!id) {
+      res.status(400).json({
+        success: false,
+        message: 'Movie ID is required',
+      });
+      return;
+    }
+
+    const result = await this.adminService.getMovieSubtitles(id);
+    
+    res.json({
+      success: true,
+      data: result,
+    });
+  });
+
+  // Delete movie subtitle
+  deleteMovieSubtitle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const { id, language } = req.params;
+    
+    if (!id) {
+      res.status(400).json({
+        success: false,
+        message: 'Movie ID is required',
+      });
+      return;
+    }
+
+    if (!language) {
+      res.status(400).json({
+        success: false,
+        message: 'Language is required',
+      });
+      return;
+    }
+
+    const result = await this.adminService.deleteMovieSubtitle(id, language);
+    
+    res.json({
+      success: true,
+      message: result.message,
+    });
+  });
 }

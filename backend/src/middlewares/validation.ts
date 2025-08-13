@@ -92,3 +92,23 @@ export const progressSchema = z.object({
   progressSeconds: z.number().min(0),
   completed: z.boolean().default(false),
 });
+
+// Admin video replacement and subtitle management schemas
+export const replaceVideoSchema = z.object({
+  videoKey: z.string().min(1, 'Video key is required'),
+});
+
+export const addSubtitleSchema = z.object({
+  language: z.string().min(2).max(10),
+  label: z.string().min(1).max(100),
+  subtitleKey: z.string().min(1, 'Subtitle key is required'),
+});
+
+export const movieIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export const subtitleLanguageParamSchema = z.object({
+  id: z.string().uuid(),
+  language: z.string().min(2).max(10),
+});

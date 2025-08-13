@@ -15,8 +15,8 @@ const configSchema = z.object({
   // JWT
   JWT_SECRET: z.string(),
   JWT_REFRESH_SECRET: z.string(),
-  JWT_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  JWT_EXPIRES_IN: z.string().default('999y'), // No expiration
+  JWT_REFRESH_EXPIRES_IN: z.string().default('999y'), // No expiration
   
   // Redis
   REDIS_URL: z.string(),

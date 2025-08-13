@@ -777,3 +777,110 @@ export const useTranscodeJobStatus = (videoId: string) => {
     refetchInterval: 3000, // Refresh every 3 seconds
   })
 }
+
+// Video Replacement Hooks
+export function useReplaceVideo() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ movieId, videoKey }: { movieId: string; videoKey: string }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.put<{
+        success: boolean
+        message: string
+        data: Video
+      }>(`/admin/movies/${movieId}/replace-video`, { videoKey })
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminMovie(variables.movieId) })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'movies'] })
+    },
+  })
+}
+
+export function useUploadUrl() {
+  return useMutation({
+    mutationFn: async ({ filename, contentType }: { filename: string; contentType: string }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        data: {
+          uploadUrl: string
+          key: string
+          expiresAt: string
+        }
+      }>('/admin/movies/upload-url', { filename, contentType })
+    },
+  })
+}
+
+// Subtitle Management Hooks
+export function useGetMovieSubtitles(movieId: string) {
+  return useQuery({
+    queryKey: ['movie-subtitles', movieId],
+    queryFn: async () => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.get<{
+        success: boolean
+        data: {
+          videoId: string
+          subtitles: Array<{
+            id: string
+            language: string
+            label: string
+            key: string
+            url: string
+          }>
+        }
+      }>(`/admin/movies/${movieId}/subtitles`)
+    },
+    enabled: !!movieId,
+  })
+}
+
+export function useAddMovieSubtitle() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ 
+      movieId, 
+      language, 
+      label, 
+      subtitleKey 
+    }: { 
+      movieId: string
+      language: string
+      label: string
+      subtitleKey: string
+    }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.post<{
+        success: boolean
+        message: string
+        data: Video
+      }>(`/admin/movies/${movieId}/subtitles`, { language, label, subtitleKey })
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['movie-subtitles', variables.movieId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminMovie(variables.movieId) })
+    },
+  })
+}
+
+export function useDeleteMovieSubtitle() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ movieId, language }: { movieId: string; language: string }) => {
+      const apiClient = getAuthenticatedApiClient()
+      return apiClient.delete<{
+        success: boolean
+        message: string
+      }>(`/admin/movies/${movieId}/subtitles/${language}`)
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['movie-subtitles', variables.movieId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminMovie(variables.movieId) })
+    },
+  })
+}

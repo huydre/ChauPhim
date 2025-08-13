@@ -187,6 +187,7 @@ model Episode {
 model MovieSource {
   id                    String   @id @default(uuid())
   videoId               String   @map("video_id")
+  rawVideoKey           String?  @map("raw_video_key") // Original uploaded video file
   hlsManifestKey        String?  @map("hls_manifest_key")
   trailerHlsManifestKey String?  @map("trailer_hls_manifest_key")
   subtitlesJson         Json?    @map("subtitles_json") // Array of {lang, label, key}
