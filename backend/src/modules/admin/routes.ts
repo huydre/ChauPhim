@@ -23,12 +23,47 @@ const createMovieSchema = {
     slug: z.string().optional(),
     titleVi: z.string().optional(),
     titleEn: z.string().optional(), 
+    originalTitle: z.string().optional(),
+    englishTitle: z.string().optional(),
     descriptionVi: z.string().optional(),
     descriptionEn: z.string().optional(),
+    overview: z.string().optional(),
     type: z.enum(['MOVIE', 'SERIES']).default('MOVIE'),
     year: z.number().min(1900).max(2030).optional(),
     posterUrl: z.string().url().optional(),
     backdropUrl: z.string().url().optional(),
+    quality: z.enum(['CAM', 'HD', 'FHD','2K', '4K']).optional(),
+    originCountry: z.array(z.string()).optional(),
+    imdbRating: z.number().min(0).max(10).optional(),
+    imdbId: z.string().optional(),
+    imagesJson: z.any().optional(), // Will store complex image data structure
+    ageRating: z.string().optional(),
+    durationMinutes: z.number().positive().optional(),
+    genreIds: z.array(z.string().uuid()).optional(),
+    castIds: z.array(z.string().uuid()).optional(),
+    rawVideoKey: z.string().optional(),
+  }),
+};
+
+const updateMovieSchema = {
+  body: z.object({
+    slug: z.string().optional(),
+    titleVi: z.string().optional(),
+    titleEn: z.string().optional(),
+    originalTitle: z.string().optional(),
+    englishTitle: z.string().optional(),
+    descriptionVi: z.string().optional(),
+    descriptionEn: z.string().optional(),
+    overview: z.string().optional(),
+    type: z.enum(['MOVIE', 'SERIES']).optional(),
+    year: z.number().min(1900).max(2030).optional(),
+    posterUrl: z.string().url().optional(),
+    backdropUrl: z.string().url().optional(),
+    quality: z.enum(['CAM', 'HD', 'FHD', 'FOURK']).optional(),
+    originCountry: z.array(z.string()).optional(),
+    imdbRating: z.number().min(0).max(10).optional(),
+    imdbId: z.string().optional(),
+    imagesJson: z.any().optional(), // Will store complex image data structure
     ageRating: z.string().optional(),
     durationMinutes: z.number().positive().optional(),
     genreIds: z.array(z.string().uuid()).optional(),
@@ -378,7 +413,7 @@ router.get('/movies/:id', adminController.getMovieById);
  *       403:
  *         description: Admin access required
  */
-router.put('/movies/:id', adminController.updateMovie);
+router.put('/movies/:id', validateRequest(updateMovieSchema), adminController.updateMovie);
 
 /**
  * @swagger

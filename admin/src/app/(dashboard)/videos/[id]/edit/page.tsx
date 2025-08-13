@@ -26,12 +26,19 @@ import {
 interface EditMovieForm {
   titleVi: string;
   titleEn: string;
+  originalTitle: string;
+  englishTitle: string;
   slug: string;
   descriptionVi: string;
   descriptionEn: string;
+  overview: string;
   year: number;
   durationMinutes: number;
   ageRating: string;
+  quality: 'CAM' | 'HD' | 'FHD' | 'FOURK';
+  originCountry: string[];
+  imdbRating: number | null;
+  imdbId: string;
   posterUrl: string;
   backdropUrl: string;
   isPublished: boolean;
@@ -52,8 +59,20 @@ export default function MovieEditPage() {
   
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedCasts, setSelectedCasts] = useState<string[]>([]);
+  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
   const [genreSearch, setGenreSearch] = useState('');
   const [castSearch, setCastSearch] = useState('');
+  const [newOriginCountry, setNewOriginCountry] = useState('');
+
+  // Available countries
+  const availableCountries = ['Việt Nam', 'Hoa Kỳ', 'Nhật Bản', 'Hàn Quốc', 'Trung Quốc', 'Thái Lan', 'Anh', 'Pháp', 'Đức', 'Ý'];
+  const ageRatings = ['G', 'PG', 'PG-13', 'R', 'NC-17'];
+  const qualityOptions = [
+    { value: 'CAM', label: 'CAM' },
+    { value: 'HD', label: 'HD' },
+    { value: 'FHD', label: 'Full HD' },
+    { value: 'FOURK', label: '4K' }
+  ];
 
   const { register, handleSubmit, setValue, watch, formState: { errors, isDirty } } = useForm<EditMovieForm>();
 
@@ -64,20 +83,31 @@ export default function MovieEditPage() {
     if (movie) {
       setValue('titleVi', movie.titleVi || '');
       setValue('titleEn', movie.titleEn || '');
+      setValue('originalTitle', movie.originalTitle || '');
+      setValue('englishTitle', movie.englishTitle || '');
       setValue('slug', movie.slug || '');
       setValue('descriptionVi', movie.descriptionVi || '');
       setValue('descriptionEn', movie.descriptionEn || '');
+      setValue('overview', movie.overview || '');
       setValue('year', movie.year || new Date().getFullYear());
       setValue('durationMinutes', movie.durationMinutes || 0);
       setValue('ageRating', movie.ageRating || '');
+      setValue('quality', movie.quality || 'HD');
+      setValue('imdbRating', movie.imdbRating || null);
+      setValue('imdbId', movie.imdbId || '');
       setValue('posterUrl', movie.posterUrl || '');
       setValue('backdropUrl', movie.backdropUrl || '');
       setValue('isPublished', movie.isPublished);
       setValue('type', movie.type);
       
+      // Set origin countries
+      const movieOriginCountry = Array.isArray(movie.originCountry) ? movie.originCountry : [];
+      setSelectedCountries(movieOriginCountry);
+      setValue('originCountry', movieOriginCountry);
+      
       // Set selected genres and casts
       const movieGenreIds = movie.genres?.map((g: any) => g.genre?.id || g.id) || [];
-      const movieCastIds = movie.casts?.map((c: any) => c.cast?.id || c.id) || [];
+      const movieCastIds = movie.cast?.map((c: any) => c.cast?.id || c.id) || [];
       setSelectedGenres(movieGenreIds);
       setSelectedCasts(movieCastIds);
       setValue('genreIds', movieGenreIds);
@@ -92,6 +122,7 @@ export default function MovieEditPage() {
         ...data,
         genreIds: selectedGenres,
         castIds: selectedCasts,
+        originCountry: selectedCountries,
       });
       router.push(`/videos/${movieId}`);
     } catch (error) {
@@ -125,6 +156,20 @@ export default function MovieEditPage() {
     const newCasts = selectedCasts.filter(id => id !== castId);
     setSelectedCasts(newCasts);
     setValue('castIds', newCasts);
+  };
+
+  const addOriginCountry = (country: string) => {
+    if (!selectedCountries.includes(country)) {
+      const newCountries = [...selectedCountries, country];
+      setSelectedCountries(newCountries);
+      setValue('originCountry', newCountries);
+    }
+  };
+
+  const removeOriginCountry = (country: string) => {
+    const newCountries = selectedCountries.filter(c => c !== country);
+    setSelectedCountries(newCountries);
+    setValue('originCountry', newCountries);
   };
 
   const generateSlug = (title: string) => {
@@ -251,6 +296,25 @@ export default function MovieEditPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="originalTitle">Tiêu đề gốc</Label>
+                  <Input
+                    id="originalTitle"
+                    {...register('originalTitle')}
+                    placeholder="Tiêu đề gốc của phim"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="englishTitle">Tiêu đề tiếng Anh</Label>
+                  <Input
+                    id="englishTitle"
+                    {...register('englishTitle')}
+                    placeholder="Tiêu đề tiếng Anh quốc tế"
+                  />
+                </div>
+              </div>
+
               <div>
                 <Label htmlFor="slug">Slug</Label>
                 <Input
@@ -263,7 +327,17 @@ export default function MovieEditPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="overview">Tóm tắt nội dung</Label>
+                <Textarea
+                  id="overview"
+                  {...register('overview')}
+                  rows={3}
+                  placeholder="Tóm tắt nội dung chính của phim..."
+                />
+              </div>
+
+              <div className="grid grid-cols-4 gap-4">
                 <div>
                   <Label htmlFor="year">Năm phát hành</Label>
                   <Input
@@ -281,6 +355,18 @@ export default function MovieEditPage() {
                   />
                 </div>
                 <div>
+                  <Label htmlFor="quality">Chất lượng</Label>
+                  <select
+                    id="quality"
+                    {...register('quality')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {qualityOptions.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <Label htmlFor="ageRating">Độ tuổi</Label>
                   <select
                     id="ageRating"
@@ -288,12 +374,33 @@ export default function MovieEditPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Chọn độ tuổi</option>
-                    <option value="G">G - Tất cả mọi lứa tuổi</option>
-                    <option value="PG">PG - Hướng dẫn của phụ huynh</option>
-                    <option value="PG13">PG-13 - Từ 13 tuổi trở lên</option>
-                    <option value="R">R - Từ 17 tuổi trở lên</option>
-                    <option value="NC17">NC-17 - Chỉ người lớn</option>
+                    {ageRatings.map(rating => (
+                      <option key={rating} value={rating}>{rating}</option>
+                    ))}
                   </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="imdbRating">Điểm IMDB</Label>
+                  <Input
+                    id="imdbRating"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
+                    {...register('imdbRating', { valueAsNumber: true })}
+                    placeholder="8.5"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="imdbId">IMDB ID</Label>
+                  <Input
+                    id="imdbId"
+                    {...register('imdbId')}
+                    placeholder="tt1234567"
+                  />
                 </div>
               </div>
 
@@ -500,6 +607,61 @@ export default function MovieEditPage() {
                     ))}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Origin Countries */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Quốc gia sản xuất</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Add country */}
+              <div className="flex gap-2">
+                <select
+                  value={newOriginCountry}
+                  onChange={(e) => setNewOriginCountry(e.target.value)}
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Chọn quốc gia</option>
+                  {availableCountries.map(country => (
+                    <option key={country} value={country}>{country}</option>
+                  ))}
+                </select>
+                <Button 
+                  type="button"
+                  onClick={() => {
+                    if (newOriginCountry) {
+                      addOriginCountry(newOriginCountry)
+                      setNewOriginCountry('')
+                    }
+                  }}
+                  disabled={!newOriginCountry}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Selected countries */}
+              {selectedCountries.length > 0 && (
+                <div>
+                  <Label className="text-sm font-medium">Đã chọn:</Label>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {selectedCountries.map(country => (
+                      <Badge key={country} variant="default" className="flex items-center gap-1">
+                        {country}
+                        <button
+                          type="button"
+                          onClick={() => removeOriginCountry(country)}
+                          className="ml-1 hover:bg-white/20 rounded-full p-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
