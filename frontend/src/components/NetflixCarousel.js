@@ -33,7 +33,7 @@ const NetflixCarousel = ({ title, movies = [], category, loading = false, error 
   };
 
   const handleDetails = (movie) => {
-    window.location.href = `/xem/${movie.slug}`;
+    window.location.href = `/phim/${movie.slug}`;
   };
 
   const slidePrev = () => {

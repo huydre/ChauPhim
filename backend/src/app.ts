@@ -22,6 +22,7 @@ BigInt.prototype.toJSON = function() {
 import authRoutes from './modules/auth/routes';
 import userRoutes from './modules/users/routes';
 import videoRoutes from './modules/videos/routes';
+import movieRoutes from './modules/movies/routes';
 import genreRoutes from './modules/genres/routes';
 import castRoutes from './modules/casts/routes';
 import commentRoutes from './modules/comments/routes';
@@ -98,6 +99,7 @@ swaggerSetup(app);
 app.use('/auth', authRoutes);
 app.use('/me', userRoutes);
 app.use('/videos', videoRoutes);
+app.use('/movies', movieRoutes);
 app.use('/genres', genreRoutes);
 app.use('/casts', castRoutes);
 app.use('/comments', commentRoutes);
