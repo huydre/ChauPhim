@@ -324,3 +324,63 @@ export const useSearchMovies = (query, params = {}) => {
 
   return { movies, loading, error, meta };
 };
+
+// Custom hook for fetching movie comments
+export const useMovieComments = (slug, params = {}) => {
+  const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [meta, setMeta] = useState(null);
+
+  useEffect(() => {
+    const fetchComments = async () => {
+      if (!slug) return;
+      
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await apiClient.getMovieComments(slug, params);
+        setComments(response.data);
+        setMeta(response.meta);
+      } catch (err) {
+        setError(err.message);
+        console.error('Error fetching movie comments:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchComments();
+  }, [slug, JSON.stringify(params)]);
+
+  return { comments, loading, error, meta };
+};
+
+// Custom hook for fetching movie cast
+export const useMovieCast = (slug) => {
+  const [cast, setCast] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchCast = async () => {
+      if (!slug) return;
+      
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await apiClient.getMovieCast(slug);
+        setCast(response.data);
+      } catch (err) {
+        setError(err.message);
+        console.error('Error fetching movie cast:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCast();
+  }, [slug]);
+
+  return { cast, loading, error };
+};
