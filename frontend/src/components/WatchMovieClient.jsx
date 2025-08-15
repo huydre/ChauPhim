@@ -29,6 +29,7 @@ import {
   generateMovieSchema,
 } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
+import CommentsReviewsSection from "@/components/ui/CommentsReviewsSection";
 import BackArrowCircleIcon from "@/assets/BackArrowCircleIcon";
 import MessageSquareIcon from "@/assets/MessageSquareIcon";
 
@@ -40,6 +41,7 @@ export default function WatchMovieClient({
   const [selectedServer, setSelectedServer] = useState(0);
   const [currentSource, setCurrentSource] = useState(movieData.sources[0]);
   const [comments, setComments] = useState(commentsData);
+  const [reviews, setReviews] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [showMoreComments, setShowMoreComments] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -140,6 +142,43 @@ export default function WatchMovieClient({
       </div>
     </Card>
   );
+
+  const handleCommentSubmit = async (commentData) => {
+    try {
+      // In a real app, you'd need authentication
+      console.log("Gửi bình luận:", commentData);
+
+      // Add comment to local state optimistically
+      const newCommentObj = {
+        id: Date.now(),
+        user: { name: "Bạn", avatarUrl: "/api/placeholder/40/40" },
+        content: commentData.content,
+        createdAt: "Vừa xong",
+        hasSpoiler: commentData.hasSpoiler || false,
+      };
+      setComments((prev) => [newCommentObj, ...prev]);
+    } catch (error) {
+      console.error("Error posting comment:", error);
+    }
+  };
+
+  const handleReviewSubmit = async (reviewData) => {
+    try {
+      console.log("Gửi đánh giá:", reviewData);
+
+      // Add review to local state optimistically
+      const newReviewObj = {
+        id: Date.now(),
+        user: { name: "Bạn", avatarUrl: "/api/placeholder/40/40" },
+        rating: reviewData.rating,
+        content: reviewData.content,
+        createdAt: "Vừa xong",
+      };
+      setReviews((prev) => [newReviewObj, ...prev]);
+    } catch (error) {
+      console.error("Error posting review:", error);
+    }
+  };
 
   // Generate structured data
   const structuredData = generateMovieSchema(movieData);
@@ -310,155 +349,13 @@ export default function WatchMovieClient({
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column - Main Content */}
-          <div className="lg:col-span-8 space-y-6">
-              
-
-            {/* Comments Section */}
-            <Card className="shadow-brand">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <MessageSquareIcon />
-                  <span className="ml-4">Bình luận ({comments.length})</span>
-                  
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Comment composer */}
-                <div className="flex space-x-3">
-                  <Avatar>
-                    <AvatarImage src="/api/placeholder/40/40" />
-                    <AvatarFallback>U</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <textarea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Viết bình luận về phim..."
-                      className="w-full p-3 bg-brand-elevated border border-brand-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent text-brand-text-primary placeholder-brand-text-secondary transition-all duration-200"
-                      rows="3"
-                      maxLength={500}
+          <div className="lg:col-span-8">
+            <CommentsReviewsSection
+                      comments={comments}
+                      reviews={reviews}
+                      onAddComment={handleCommentSubmit}
+                      onAddReview={handleReviewSubmit}
                     />
-                    <div className="flex justify-between items-center mt-2">
-                      <span className="text-xs text-brand-text-secondary">
-                        {newComment.length}/500 ký tự
-                      </span>
-                      <Button
-                        onClick={handleAddComment}
-                        disabled={!newComment.trim()}
-                        size="sm"
-                      >
-                        Gửi bình luận
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Comments list */}
-                <div className="space-y-4">
-                  {comments
-                    .slice(0, showMoreComments ? comments.length : 3)
-                    .map((comment, index) => (
-                      <div key={comment.id} className="space-y-3">
-                        <div className="flex space-x-3">
-                          <Avatar>
-                            <AvatarImage src={comment.user.avatar} />
-                            <AvatarFallback>
-                              {comment.user.name[0]}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <div className="bg-brand-elevated rounded-lg p-3 hover:bg-brand-elevated/80 transition-colors">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="font-medium text-brand-text-primary">
-                                  {comment.user.name}
-                                </span>
-                                <span className="text-xs text-brand-text-secondary flex items-center">
-                                  <Clock className="w-3 h-3 mr-1" />
-                                  {formatTimeAgo(comment.timestamp)}
-                                </span>
-                              </div>
-                              <p className="text-brand-text-secondary">
-                                {comment.content}
-                              </p>
-                            </div>
-                            <div className="flex items-center space-x-4 mt-2 text-sm">
-                              <button
-                                className="flex items-center space-x-1 text-brand-text-secondary hover:text-brand-primary transition-colors"
-                                onClick={() => handleLikeComment(comment.id)}
-                              >
-                                <ThumbsUp className="w-4 h-4" />
-                                <span>{comment.likes}</span>
-                              </button>
-                              <button className="text-brand-text-secondary hover:text-brand-primary transition-colors">
-                                <Reply className="w-4 h-4 inline mr-1" />
-                                Trả lời
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Replies */}
-                        {comment.replies &&
-                          comment.replies.map((reply) => (
-                            <div
-                              key={reply.id}
-                              className="ml-12 flex space-x-3"
-                            >
-                              <Avatar className="w-8 h-8">
-                                <AvatarImage src={reply.user.avatar} />
-                                <AvatarFallback>
-                                  {reply.user.name[0]}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1">
-                                <div className="bg-brand-elevated rounded-lg p-3 hover:bg-brand-elevated/80 transition-colors">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="font-medium text-brand-text-primary text-sm">
-                                      {reply.user.name}
-                                    </span>
-                                    <span className="text-xs text-brand-text-secondary">
-                                      {formatTimeAgo(reply.timestamp)}
-                                    </span>
-                                  </div>
-                                  <p className="text-brand-text-secondary text-sm">
-                                    {reply.content}
-                                  </p>
-                                </div>
-                                <div className="flex items-center space-x-4 mt-1 text-xs">
-                                  <button className="flex items-center space-x-1 text-brand-text-secondary hover:text-brand-primary transition-colors">
-                                    <ThumbsUp className="w-3 h-3" />
-                                    <span>{reply.likes}</span>
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        
-                        {/* Ad banner in comments (after 2nd comment) */}
-                        {index === 1 && (
-                          <div className="flex justify-center py-4">
-                            <AdSlot width={728} height={90} />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                </div>
-
-                {/* Load more comments */}
-                {comments.length > 3 && (
-                  <div className="text-center pt-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowMoreComments(!showMoreComments)}
-                    >
-                      {showMoreComments
-                        ? "Thu gọn bình luận"
-                        : `Xem thêm ${comments.length - 3} bình luận`}
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
 
           {/* Right Sidebar */}
