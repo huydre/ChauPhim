@@ -1,7 +1,5 @@
 # ChauPhim - Nền tảng Streaming Video Việt Nam 🇻🇳
 
-Một nền tảng streaming video hoàn chỉnh được xây dựng cho thị trường Việt Nam, hỗ trợ phim lẻ, phim bộ và nội dung giải trí đa dạng với giao diện song ngữ Việt-Anh.
-
 ## 🚀 Tình trạng dự án
 
 ### ✅ Backend API (Hoàn thành)
@@ -18,7 +16,7 @@ Một nền tảng streaming video hoàn chỉnh được xây dựng cho thị 
 ### 🚧 Frontend (Đang phát triển)
 - **Framework**: Next.js 15
 - **Styling**: Tailwind CSS
-- **UI Components**: Custom Vietnamese-optimized components
+- **UI Components**: 
 
 **Status**: 🔄 **IN DEVELOPMENT**
 
@@ -26,7 +24,7 @@ Một nền tảng streaming video hoàn chỉnh được xây dựng cho thị 
 
 ```
 ChauPhim/
-├── backend/           # API Backend (✅ Hoàn thành)
+├── backend/           # API Backend (✅)
 │   ├── src/
 │   │   ├── modules/   # Feature modules
 │   │   ├── infra/     # Infrastructure (DB, Cache, Storage)
@@ -34,7 +32,7 @@ ChauPhim/
 │   │   └── tests/     # Test suites
 │   ├── prisma/        # Database schema & migrations
 │   └── docker-compose.yml
-├── frontend/          # Next.js Frontend (🚧 Đang phát triển)
+├── frontend/          # Next.js Frontend (🚧)
 │   ├── src/
 │   │   ├── app/       # App Router
 │   │   └── components/# UI Components
@@ -44,7 +42,7 @@ ChauPhim/
 
 ## 🎯 Tính năng chính
 
-### Backend API Features (✅ Đã hoàn thành)
+### Backend API Features (✅)
 - ✅ **Quản lý người dùng**: Đăng ký, đăng nhập, phân quyền
 - ✅ **Quản lý nội dung**: Phim lẻ, phim bộ, tập phim
 - ✅ **Streaming**: HLS video streaming với presigned URLs
@@ -54,7 +52,7 @@ ChauPhim/
 - ✅ **Admin panel**: Quản lý nội dung và người dùng
 - ✅ **Đa ngôn ngữ**: Hỗ trợ Tiếng Việt và Tiếng Anh
 
-### Frontend Features (🚧 Kế hoạch)
+### Frontend Features (🚧 TODO)
 - 🔄 Trang chủ với nội dung trending
 - 🔄 Trình phát video tích hợp
 - 🔄 Tìm kiếm và lọc nâng cao
@@ -105,31 +103,6 @@ npm run dev
 Backend đã được seed với data mẫu:
 - **Admin**: `admin@chauphim.com` / `admin123`
 - **User**: `user@chauphim.com` / `user123`
-
-## 📊 API Endpoints (Đã test thành công)
-
-```bash
-# Health check
-GET http://localhost:3000/health
-
-# Authentication
-POST http://localhost:3000/auth/login
-POST http://localhost:3000/auth/register
-
-# Videos
-GET http://localhost:3000/videos?page=1&limit=10
-GET http://localhost:3000/videos/{slug}
-
-# User profile
-GET http://localhost:3000/me
-Authorization: Bearer <token>
-
-# Genres
-GET http://localhost:3000/genres
-
-# Streaming
-GET http://localhost:3000/stream/{videoId}
-Authorization: Bearer <token>
 ```
 
 ## 🛠️ Tech Stack
@@ -145,17 +118,16 @@ Authorization: Bearer <token>
 - **Docker** containerization
 
 ### Frontend
-- **Next.js 15** với App Router
+- **Next.js 15** 
 - **TypeScript**
 - **Tailwind CSS**
-- **React** components
+- **React** 
 
 ## 🎨 UI/UX Design
 
 - **Thiết kế cho người Việt**: Giao diện thân thiện với người dùng Việt Nam
 - **Đa thiết bị**: Responsive design cho desktop và mobile
 - **Hiệu suất cao**: Lazy loading, caching, optimized images
-- **Accessibility**: Tuân thủ WCAG guidelines
 
 ## 🔒 Bảo mật
 
@@ -176,13 +148,12 @@ Authorization: Bearer <token>
 
 ## 🌏 Localization
 
-- ✅ Nội dung song ngữ Việt-Anh
 - ✅ API responses có cả titleVi/titleEn
 - ✅ Genres và metadata đa ngôn ngữ
 
 ## 📞 Liên hệ & Hỗ trợ
 
-- **Repository**: [GitHub](repository-url)
+- **Repository**: [GitHub](https://github.com/huydre/ChauPhim)
 - **Issues**: Tạo issue trên GitHub
 - **Documentation**: Chi tiết tại `/backend/README.md`
 
@@ -202,13 +173,3 @@ Authorization: Bearer <token>
 - [ ] Search & filter interface
 - [ ] User dashboard
 
-### Phase 3: Advanced Features 📋 (Tương lai)
-- [ ] Live streaming
-- [ ] Mobile app (React Native)
-- [ ] AI recommendations
-- [ ] Social features
-- [ ] Analytics dashboard
-
----
-
-**Lưu ý**: Backend đã sẵn sàng production và đang chạy ổn định. Frontend đang trong giai đoạn phát triển.
