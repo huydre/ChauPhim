@@ -9,7 +9,8 @@ import {
 
 export async function generateMetadata({ params }) {
   try {
-    const response = await apiClient.getMovieBySlug(params.id);
+    const { id } = await params;
+    const response = await apiClient.getMovieBySlug(id);
     const movieData = response.data;
 
     return {
@@ -39,11 +40,12 @@ export async function generateMetadata({ params }) {
 
 export default async function WatchMoviePage({ params }) {
   try {
+    const { id } = await params;
     // Fetch movie data from API
     const [movieResponse, recommendationsResponse, commentsResponse] = await Promise.all([
-      apiClient.getMovieBySlug(params.id),
-      apiClient.getMovieRecommendations(params.id, 6),
-      apiClient.getMovieComments(params.id, { limit: 10, sort: 'newest' })
+      apiClient.getMovieBySlug(id),
+      apiClient.getMovieRecommendations(id, 6),
+      apiClient.getMovieComments(id, { limit: 10, sort: 'newest' })
     ]);
 
     const movieData = movieResponse.data;

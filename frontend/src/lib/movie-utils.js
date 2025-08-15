@@ -8,6 +8,7 @@ export const transformMovieData = (movieData) => {
 
   return {
     id: movieData.id,
+    slug: movieData.slug,
     title: movieData.titleVi || movieData.titleEn,
     titleEn: movieData.titleEn || movieData.titleVi,
     originalTitle: movieData.originalTitle || movieData.titleEn,

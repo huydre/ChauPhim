@@ -10,14 +10,13 @@ import {
   Eye,
   Star,
   Heart,
-  MessageSquare,
   ChevronRight,
   MoreHorizontal,
   Reply,
   ThumbsUp,
   Clock,
 } from "lucide-react";
-import VideoPlayer from "@/components/video/VideoPlayer";
+import { VideoPlayer as SimpleVideoPlayer } from "@/components/video/player/SimpleVideoPlayer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +30,7 @@ import {
 } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
 import BackArrowCircleIcon from "@/assets/BackArrowCircleIcon";
+import MessageSquareIcon from "@/assets/MessageSquareIcon";
 
 export default function WatchMovieClient({
   movieData,
@@ -163,9 +163,9 @@ export default function WatchMovieClient({
       {/* Container */}
       <div className="max-w-[1280px] md:max-w-[1400px] mx-auto px-4 md:px-6 py-6">
         <div className="flex items-center space-x-4 my-4">
-          <button>
+          <Link href={`/phim/${movieData.slug}`} className="cursor-pointer">
             <BackArrowCircleIcon />
-          </button>
+          </Link>
           <h2 className="text-lg font-semibold">Xem phim {movieData.title}</h2>
         </div>
 
@@ -173,18 +173,19 @@ export default function WatchMovieClient({
         <Card className="mb-6 shadow-brand-lg bg-black">
           <CardContent className="p-0">
             <div className="aspect-video relative overflow-hidden rounded-2xl bg-black">
-              <VideoPlayer
+              <SimpleVideoPlayer
                 src={currentSource.url}
+                title={movieData.title}
                 poster={movieData.backdrop}
-                subtitles={movieData.subtitles}
-                qualities={movieData.sources.map((s) => ({
-                  label: s.quality,
-                  value: s.quality,
-                }))}
-                onTimeUpdate={handleTimeUpdate}
+                subtitles={movieData.subtitles || []}
+                autoPlay={true}
+                onTimeUpdate={(time) => setCurrentTime(time)}
                 onEnded={handleVideoEnded}
+                onError={(error) => {
+                  console.error('Video error:', error);
+                  toast.error('Lỗi phát video. Vui lòng thử server khác.');
+                }}
                 className="w-full h-full"
-                autoplay={true}
               />
             </div>
 
@@ -274,64 +275,51 @@ export default function WatchMovieClient({
         </div>
 
         {/* Server Selection */}
-        <Card className="mb-6 shadow-brand">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center">
-              <Play className="w-5 h-5 mr-2" />
+        <div className="mt-10 mb-6 shadow-brand">
+            <h3 className="text-2xl flex items-center mb-4">
               Các bản chiếu
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </h3>
+          <div>
             <div className="flex flex-wrap gap-2">
               {movieData.sources.map((source, index) => (
-                <Button
-                  key={index}
-                  variant={selectedServer === index ? "accent" : "ghost"}
-                  size="sm"
-                  onClick={() => handleServerChange(index)}
-                  className={cn(
-                    "border transition-all duration-200",
-                    selectedServer === index
-                      ? "border-brand-accent shadow-brand"
-                      : "border-brand-border hover:border-brand-accent/50"
-                  )}
-                >
-                  {source.server} - {source.quality}
-                </Button>
+                <div className="relative bg-gray-900 w-[281px] h-[161px] border-2 border-yellow-200 rounded-2xl overflow-hidden cursor-pointer hover:-translate-y-2 transition-transform duration-200">
+                  <div className="absolute top-0 bottom-0 right-0 z-0">
+                    <Image
+                      src={movieData.poster || "/api/placeholder/300/450"}
+                      alt={movieData.title}
+                      width={110}
+                      height={156}
+                      className="rounded-sm"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-900/60 to-transparent"></div>
+                  </div>
+                  <div className="relative flex items-center h-full p-4 z-20">
+                    <div className="space-y-4">
+                      <p className="text-sm font-medium">{source.server}</p>
+                      <p className="text-md font-semibold">{movieData.title}</p>
+                      <button className="bg-white px-2 py-1.5 text-black rounded-md text-sm font-medium">Đang xem</button>
+                    </div>
+                  </div>
+                  
+                </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column - Main Content */}
           <div className="lg:col-span-8 space-y-6">
-            {/* Movie Info */}
-            <Card className="shadow-brand">
-              <CardContent className="p-6">
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {movieData.genres.map((genre) => (
-                    <Badge key={genre} variant="default">
-                      {genre}
-                    </Badge>
-                  ))}
-                  <Badge variant="secondary">
-                    Thời lượng: {movieData.duration} phút
-                  </Badge>
-                </div>
-                <p className="text-brand-text-secondary leading-relaxed text-justify">
-                  {movieData.description}
-                </p>
-              </CardContent>
-            </Card>
+              
 
             {/* Comments Section */}
             <Card className="shadow-brand">
               <CardHeader>
                 <CardTitle className="flex items-center">
-                  <MessageSquare className="w-5 h-5 mr-2" />
-                  Bình luận ({comments.length})
+                  <MessageSquareIcon />
+                  <span className="ml-4">Bình luận ({comments.length})</span>
+                  
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -445,7 +433,7 @@ export default function WatchMovieClient({
                               </div>
                             </div>
                           ))}
-
+                        
                         {/* Ad banner in comments (after 2nd comment) */}
                         {index === 1 && (
                           <div className="flex justify-center py-4">
@@ -476,7 +464,7 @@ export default function WatchMovieClient({
           {/* Right Sidebar */}
           <div className="lg:col-span-4 space-y-6">
             {/* Ad Banner 1 */}
-            <AdSlot width={300} height={250} className="mx-auto" />
+            {/* <AdSlot width={300} height={250} className="mx-auto" /> */}
 
             {/* Cast */}
             <Card className="shadow-brand">
@@ -550,7 +538,7 @@ export default function WatchMovieClient({
             </Card>
 
             {/* Ad Banner 2 */}
-            <AdSlot width={300} height={600} className="mx-auto" />
+            {/* <AdSlot width={300} height={600} className="mx-auto" /> */}
           </div>
         </div>
       </div>
