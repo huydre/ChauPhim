@@ -4,7 +4,7 @@
   "description": "Video-on-Demand Backend API with Node.js, TypeScript, Express, Prisma, MySQL",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch src/server.ts --port 3000",
     "build": "tsc",
     "start": "node dist/server.js",
     "db:generate": "prisma generate",

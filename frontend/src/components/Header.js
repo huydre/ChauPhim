@@ -1,8 +1,13 @@
 'use client';
 import Image from "next/image";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Header() {
+  const router = useRouter();
+  const navigate = (path) => {
+    router.push(path);
+  };
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null);
 
@@ -20,7 +25,7 @@ export default function Header() {
         {/* Main Header */}
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0" onClick={() => navigate('/phimhay')}>
             <Image
               src="/logo.svg"
               alt="ChauPhim Logo"
@@ -35,7 +40,7 @@ export default function Header() {
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center space-x-6 flex-1 justify-center">
+          <nav className="hidden xl:flex items-center space-x-6 flex-1 justify-center">
             <a href="/" className="text-gray-300 hover:text-white transition-colors font-medium">
               Trang chủ
             </a>
@@ -102,7 +107,7 @@ export default function Header() {
             </div>
 
             {/* User menu - Desktop */}
-            <div className="hidden lg:block relative group">
+            <div className="hidden xl:block relative group">
               <button className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -118,7 +123,7 @@ export default function Header() {
             {/* Mobile menu button */}
             <button
               onClick={toggleMenu}
-              className="lg:hidden text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
+              className="xl:hidden text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {isMenuOpen ? (
@@ -133,7 +138,7 @@ export default function Header() {
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="lg:hidden mt-4 pb-4 border-t border-white/10">
+          <div className="xl:hidden mt-4 pb-4 border-t border-white/10">
             <div className="pt-4 space-y-2">
               {/* Mobile Search */}
               <div className="relative mb-4">

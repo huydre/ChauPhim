@@ -72,8 +72,36 @@ export const searchQuerySchema = z.object({
   type: z.enum(['MOVIE', 'SERIES']).optional(),
   genre: z.string().optional(),
   year: z.coerce.number().min(1900).max(new Date().getFullYear() + 5).optional(),
+  country: z.string().optional(),
   sort: z.enum(['popular', 'new', 'rating', 'title']).default('popular'),
   ...paginationSchema.shape,
+});
+
+export const movieSearchQuerySchema = z.object({
+  q: z.string().optional(),
+  genre: z.string().optional(),
+  year: z.coerce.number().min(1900).max(new Date().getFullYear() + 5).optional(),
+  country: z.string().optional(),
+  sort: z.enum(['popular', 'new', 'rating', 'title']).default('popular'),
+  ...paginationSchema.shape,
+});
+
+export const trendingQuerySchema = z.object({
+  period: z.enum(['day', 'week', 'month']).default('week'),
+  limit: z.coerce.number().min(1).max(50).default(10),
+});
+
+export const topRatedQuerySchema = z.object({
+  limit: z.coerce.number().min(1).max(50).default(10),
+});
+
+export const commentsQuerySchema = z.object({
+  sort: z.enum(['newest', 'oldest', 'popular']).default('newest'),
+  ...paginationSchema.shape,
+});
+
+export const genreParamSchema = z.object({
+  genre: z.string().min(1),
 });
 
 export const ratingSchema = z.object({
